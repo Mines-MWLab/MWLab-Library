@@ -23,7 +23,7 @@ Visit our lab site: [Microwave & RF Research Group](https://www.colorado.edu/lab
 │   ├── project_name/
 │   │   ├── layout.gds
 │   │   ├── schematic.sch
-│   │   ├── gdsfacroty_script.py
+│   │   ├── gdsfactory_script.py
 │   │   ├── README.md
 │   │   └── notes/
 ├── docs/
@@ -33,5 +33,7 @@ Visit our lab site: [Microwave & RF Research Group](https://www.colorado.edu/lab
 ├── scripts/
 │   └── utilities/
 │   └── devices/
+├── sims/
+│   ├── device_name/
 ├── LICENSE
 └── README.md
