@@ -2,7 +2,7 @@
 
 Welcome to the official design submission repository of the **Microwave & RF Research Group** at the **University of Colorado Boulder**. This repository serves as a centralized platform for managing and sharing design files intended for fabrication of **RF** and **photonic integrated circuits (ICs)**.
 
-## 📌 Purpose
+## Purpose
 
 This repository is intended to:
 - Share and version control design files for RF and photonic IC fabrication.
@@ -10,7 +10,7 @@ This repository is intended to:
 - Maintain a record of traceable changes and design iterations.
 - Promote reproducibility and good engineering practices.
 
-## 🧠 Who We Are
+## Who We Are
 
 We are a research group based in the **ECEE Department at CU Boulder**, working on cutting-edge research in microwave, millimeter-wave, and photonic integrated systems.
 
