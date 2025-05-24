@@ -3,6 +3,7 @@ import lnoi400
 from gplugins.common.config import PATH
 from gdsfactory.typings import CrossSectionSpec
 from lnoi400.spline import bend_S_spline_varying_width
+import numpy as np
 
 #####################
 # Asymmetric directional coupler
@@ -227,3 +228,92 @@ def asymmetric_directional_coupler_racetrack(
 
     [dc.add_port(name=name, port=port) for name, port in exposed_ports]
     return dc
+
+@gf.cell
+def U_bend_racetrack_varang(
+    angle: float = 180.0,
+    v_offset: float = 90.0,
+    p: float = 1.0,
+    with_arc_floorplan: bool = True,
+    cross_section: CrossSectionSpec = "xs_rwg3000",
+    **kwargs,
+) -> gf.Component:
+    """A U-bend with fixed cross-section and dimensions, suitable for building a low-loss racetrack resonator."""
+    
+    radius = 0.5 * v_offset
+
+    npoints = int(np.round(600 * radius / 90.0))
+    #angle = 180.0
+
+    return gf.components.bend_euler(
+        radius=radius,
+        angle=angle,
+        p=p,
+        with_arc_floorplan=with_arc_floorplan,
+        npoints=npoints,
+        cross_section=cross_section,
+        **kwargs,
+    )
+
+
+#@gf.cell
+@gf.cell(check_instances=False)
+def pulley_coupler(
+    ubend_diameter: float = 200.0,
+    pulley_angle: float = 45.0,
+    pulley_diameter: float = 300.0,
+    pulley_gap: float = 0.6,
+    cross_section_ubend: CrossSectionSpec = "xs_rwg3000",
+    cross_section_pulley: CrossSectionSpec = "xs_rwg1000",
+) -> gf.Component:
+    """A U-bend with pulley coupler."""
+
+    c1 = U_bend_racetrack_varang(angle=pulley_angle,v_offset=pulley_diameter, p=1.0, with_arc_floorplan=True, cross_section=cross_section_pulley)
+    c2 = U_bend_racetrack_varang(angle=pulley_angle/2.0,v_offset=pulley_diameter, p=1.0, with_arc_floorplan=True, cross_section=cross_section_pulley)
+    c3 = U_bend_racetrack_varang(angle=pulley_angle/2.0,v_offset=pulley_diameter, p=1.0, with_arc_floorplan=True, cross_section=cross_section_pulley)
+    c4 = U_bend_racetrack_varang(angle=180.0,v_offset=ubend_diameter, p=1.0, with_arc_floorplan=True, cross_section=cross_section_ubend)
+    c = gf.Component()
+    wg1 = c << c1
+    wg2 = c << c2
+    wg3 = c << c3
+
+    wg2.connect("o2",wg1.ports["o2"])
+    wg3.connect("o1", wg1.ports["o1"])
+
+    exposed_ports = [
+        ("o1", wg2.ports["o1"]),
+        ("o2", wg3.ports["o2"]),
+    ]
+    [c.add_port(name=name, port=port) for name, port in exposed_ports]
+
+    c.rotate(90-pulley_angle+pulley_angle/2.0)
+
+
+    # obtain width of bus
+    c_gds = gf.read.import_gds(c.write_gds())
+    c_gds.flatten(merge = True)
+    c_gds.remove_layers([(3,0)])
+    sizex_bus = c_gds.xsize
+
+    # obtain width of racetrack
+    c4_gds = gf.read.import_gds(c4.write_gds())
+    c4_gds.flatten(merge = True)
+    c4_gds.remove_layers([(3,0)])
+    sizex_rt = c4_gds.xsize
+    #print(sizex_bus, sizex_rt)
+
+    size_buswg = gf.get_cross_section(cross_section_pulley).sections[0].width
+
+    rt = c << c4
+
+    rt.dmovey(0.5*rt.ports["o1"].center[1] + 0.5*rt.ports["o2"].center[1],
+            0.5*wg3.ports["o1"].center[1]+ 0.5*wg2.ports["o2"].center[1])
+
+
+
+    rt.dmovex(rt.ports["o1"].center[0],
+            wg3.ports["o2"].center[0]+sizex_bus-0.5*size_buswg-size_buswg-sizex_rt-pulley_gap,
+            )
+
+    [c.add_port(name=name, port=port) for name, port in [ ("o3", rt.ports["o1"]),("o4", rt.ports["o2"])]]
+    return c
