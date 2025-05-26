@@ -1,0 +1,3 @@
+[submodule "pdks/lxt_pdk_gf"]
+	path = pdks/lxt_pdk_gf
+	url = https://github.com/Luxtelligence/lxt_pdk_gf.git
