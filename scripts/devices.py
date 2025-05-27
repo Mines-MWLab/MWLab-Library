@@ -10,6 +10,8 @@ from functools import partial
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+# This file contains the definitions of various devices used in the LNOI400 project.
+
 #####################
 # Traveling Wave EOM (final design)
 #####################
