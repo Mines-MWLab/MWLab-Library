@@ -1,7 +1,7 @@
 import gdsfactory as gf
 import lnoi400
 from gplugins.common.config import PATH
-from gdsfactory.typings import CrossSectionSpec
+from gdsfactory.typings import CrossSectionSpec, ComponentSpec
 from lnoi400.spline import bend_S_spline_varying_width
 import numpy as np
 import components as mpl
@@ -10,39 +10,38 @@ from functools import partial
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-# This file contains the definitions of various devices used in the LNOI400 project.
-
 #####################
 # Traveling Wave EOM (final design)
 #####################
 @gf.cell
-def tWave_EOM():
-
-    mzm = gf.Component()
-
+def tWave_EOM(
     # trail_cpw variables
-    rf_central_conductor_width = 21.0
-    rf_gap = 4
-    modulation_length = 4330.0
+    rf_central_conductor_width: float = 21.0,
+    rf_gap: float = 4,
+    modulation_length: float = 4330.0,
 
     # mzm_unbalanced variables
-    length_imbalance = 0.0
-    lbend_tune_arm_reff = 75.0
-    rf_pad_start_width = 80.0
-    rf_ground_planes_width = 180.0
-    rf_pad_length_straight = 10.0
-    rf_pad_length_tapered = 300.0
-    bias_tuning_section_length = 700.0
-    cpw_cell = lnoi400.cells.trail_cpw
-    with_heater = True
-    heater_offset = 1.2
-    heater_width = 1.0
-    heater_pad_size = (75.0, 75.0)
+    length_imbalance: float = 0.0,
+    lbend_tune_arm_reff: float = 75.0,
+    rf_pad_start_width: float = 80.0,
+    #rf_ground_planes_width: float = 180.0,
+    rf_pad_length_straight: float = 10.0,
+    rf_pad_length_tapered: float = 300.0,
+    bias_tuning_section_length: float = 700.0,
+    cpw_cell: ComponentSpec = lnoi400.cells.trail_cpw,
+    with_heater: bool = True,
+    heater_offset: float = 1.2,
+    heater_width: float = 1.0,
+    heater_pad_size: tuple[float, float] = (75.0, 75.0),
 
     # #_mzm_interferometer variables
-    taper_length = 100.0
-    rib_core_width_modulator = 2.5
+    taper_length: float = 100.0,
+    rib_core_width_modulator: float = 2.5,
 
+
+) -> gf.Component:
+
+    mzm = gf.Component()
     
 
     rf_line = mzm << cpw_cell(length = modulation_length,
@@ -225,16 +224,20 @@ def tWave_EOM():
             ("o2", lbend_top.ports["o2"]),
             ("o1", combiner.ports["o1"]),
             ("o3", lbend_bottom.ports["o2"]),
+            ("o4", combiner.ports["o2"]),
         ]
 
 
         for name, port in exposed_ports:
             comb_section.add_port(name=name, port=port)
 
+        #comb_section.show()
+
         return comb_section
 
     # pushes splitter1 to design
     splt_ref = interferometer << splt1
+    
     bt = interferometer << branch_top()
     bb = interferometer << branch_top()
     bs = interferometer << branch_tune_short()
@@ -258,34 +261,34 @@ def tWave_EOM():
         else cs.connect("o2", bs.ports["o2"])
     ]
 
+
+    #splt1.show()
+    vaportvar = bt.ports["taper_start"].dcenter
+    print(vaportvar)
+
+    interferometer.dmove(
+        vaportvar,
+        (0.0, 0.5 * (rf_central_conductor_width + gap_eff)),
+    )
+
     exposed_ports = [
         ("o1", splt_ref.ports["o1"]),
         ("upper_taper_start", bt.ports["taper_start"]),
         ("short_bias_branch_start", bs.ports["phase_tuning_segment_start"]),
         ("long_bias_branch_start", bl.ports["phase_tuning_segment_start"]),
-        ("o2", cs.ports["o1"]),
-        ("o3", cs.ports["o2"]),
-    ]
-
-    exposed_optical_ports = [
-        ("o1", splt_ref.ports["o1"]),
-        ("o2", cs.ports["o1"]),
-        ("o3", cs.ports["o2"]),
+        ("o2", cs.ports["o4"]),
+        ("o3", cs.ports["o1"]),
     ]
 
     for name, port in exposed_ports:
         interferometer.add_port(name=name, port=port)
 
+
+
     interferometer.flatten()
 
-    #print(interferometer.get_ports_list())
+    interferometer_ref = mzm << interferometer
 
-    interferometer = mzm << interferometer
-
-    interferometer.dmove(
-    interferometer.ports["upper_taper_start"].dcenter,
-    (0.0, 0.5 * (rf_central_conductor_width + gap_eff)),
-    )
 
     if with_heater:
         ht_ref = mzm << lnoi400.cells.heater_straight_single(
@@ -304,14 +307,14 @@ def tWave_EOM():
         ht_ref.dmove(
             origin=ht_ref.ports["ht_start"].dcenter,
             destination=(
-                np.array(interferometer.ports["long_bias_branch_start"].dcenter)
+                np.array(interferometer_ref.ports["long_bias_branch_start"].dcenter)
                 + heater_disp
             ),
         )
 
     # Expose the ports
 
-    exposed_ports = [
+    exposed_ports += [
         ("e1", rf_line.ports["bp1"]),
         ("e2", rf_line.ports["bp2"]),
     ]
@@ -319,11 +322,14 @@ def tWave_EOM():
     if with_heater:
         exposed_ports += [
             ("e3", ht_ref.ports["e1"]),
-            ("e4", ht_ref.ports["e2"],
+            (
+                "e4",
+                ht_ref.ports["e2"],
             ),
         ]
 
-    [mzm.add_port(name=name, port=port) for name, port in exposed_ports + exposed_optical_ports]
+    [mzm.add_port(name=name, port=port) for name, port in exposed_ports]
+
     
     return mzm
 
