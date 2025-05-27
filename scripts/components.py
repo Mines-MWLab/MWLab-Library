@@ -280,12 +280,12 @@ def pulley_coupler(
     wg1 = c << c1
     wg2 = c << c2
     wg3 = c << c3
-
-    wg2.connect("o2",wg1.ports["o2"])
+    wg2.connect("o1",wg1.ports["o2"], mirror=True)
+    #wg2.connect("o2",wg1.ports["o2"])
     wg3.connect("o1", wg1.ports["o1"])
 
     exposed_ports = [
-        ("o1", wg2.ports["o1"]),
+        ("o1", wg2.ports["o2"]),
         ("o2", wg3.ports["o2"]),
     ]
     [c.add_port(name=name, port=port) for name, port in exposed_ports]
@@ -311,7 +311,7 @@ def pulley_coupler(
     rt = c << c4
 
     rt.dmovey(0.5*rt.ports["o1"].center[1] + 0.5*rt.ports["o2"].center[1],
-            0.5*wg3.ports["o1"].center[1]+ 0.5*wg2.ports["o2"].center[1])
+            0.5*wg3.ports["o2"].center[1]+ 0.5*wg2.ports["o2"].center[1])
 
 
 
