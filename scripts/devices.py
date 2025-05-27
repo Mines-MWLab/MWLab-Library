@@ -264,6 +264,12 @@ def tWave_EOM():
         ("o3", cs.ports["o2"]),
     ]
 
+    exposed_optical_ports = [
+        ("o1", splt_ref.ports["o1"]),
+        ("o2", cs.ports["o1"]),
+        ("o3", cs.ports["o2"]),
+    ]
+
     for name, port in exposed_ports:
         interferometer.add_port(name=name, port=port)
 
@@ -273,13 +279,10 @@ def tWave_EOM():
 
     interferometer = mzm << interferometer
 
-
     interferometer.dmove(
     interferometer.ports["upper_taper_start"].dcenter,
     (0.0, 0.5 * (rf_central_conductor_width + gap_eff)),
     )
-
-
 
     if with_heater:
         ht_ref = mzm << lnoi400.cells.heater_straight_single(
@@ -313,14 +316,11 @@ def tWave_EOM():
     if with_heater:
         exposed_ports += [
             ("e3", ht_ref.ports["e1"]),
-            (
-                "e4",
-                ht_ref.ports["e2"],
+            ("e4", ht_ref.ports["e2"],
             ),
         ]
 
-    [mzm.add_port(name=name, port=port) for name, port in exposed_ports]
-
+    [mzm.add_port(name=name, port=port) for name, port in exposed_ports + exposed_optical_ports]
     
     return mzm
 
