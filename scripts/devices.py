@@ -727,6 +727,146 @@ def EOcomb(
     return c
 
 
+
+#####################
+# Dual EO comb
+#####################
+@gf.cell
+def dualEOcomb(
+    comb_sep: float = 101.25+50,
+    RT_cross_section: CrossSectionSpec = "xs_rwg3000",
+    DC_cross_section: CrossSectionSpec = "xs_rwg1000",
+    DC_io_wg_sep: float = 25,#15.3,
+    DC_sbend_length: float = 150,
+    DC_central_straight_length: float = 16.92,
+    DC_coupl_wg_sep: float = 0.6,
+    DC_coup_wg_width: float = 1.2,
+    DC_ubend_sep: float = 100,
+    h_racetrack: float = 200.0,
+    ls: float = 1925, #3850
+    rf_gap:float = 4,
+    rf_central_conductor_width: float = 21.0,
+    h: float = 3.0,
+    r: float = 44.7,
+    t: float = 7.0,
+    s: float = 1.5,
+    c: float = 5.0,
+)-> gf.Component:
+
+    lextra = 0
+    #define subcomponents
+    u_bend_racetrack = lnoi400.cells.U_bend_racetrack(
+        v_offset = h_racetrack,
+        p = 1.0,
+        with_arc_floorplan = True,
+        cross_section = RT_cross_section,
+    )
+
+    ecoup = mpl.asymmetric_directional_coupler_racetrack(
+        cross_section_io=RT_cross_section,
+        cross_section_bus=DC_cross_section,
+        io_wg_sep = DC_io_wg_sep*2,
+        sbend_length = DC_sbend_length,
+        central_straight_length = DC_central_straight_length,
+        coupl_wg_sep = DC_coupl_wg_sep,
+        coup_wg_width = DC_coup_wg_width,
+    )
+    ec_xsize = ecoup.xsize
+
+    dc_wg_sep = gf.components.straight(
+        length = DC_ubend_sep,
+        cross_section=RT_cross_section,
+    )
+    dc_wg_shorter = gf.components.straight(
+        length = ls+2*lextra-ec_xsize-DC_ubend_sep,
+        cross_section=RT_cross_section,
+    )
+
+    dc_wg = gf.components.straight(
+        length = ls+2*lextra,
+        cross_section=RT_cross_section,
+    )
+
+
+    def racetrack():
+        # push subcomponents to design
+        race_track = gf.Component()
+        u_bend_ref1 = race_track << u_bend_racetrack
+        u_bend_ref2 = race_track << u_bend_racetrack
+        straight_ref1 = race_track << dc_wg_shorter
+        straight_sep_ref = race_track << dc_wg_sep
+        ec_top = race_track << ecoup
+        straight_ref2 = race_track << dc_wg
+
+
+        u_bend_ref1.connect("o2", straight_ref1.ports["o2"])
+        straight_ref2.connect("o2", u_bend_ref1.ports["o1"])
+        ec_top.connect("o3", straight_ref1["o1"])
+        straight_sep_ref.connect("o1", ec_top.ports["o4"])
+        u_bend_ref2.connect("o1", straight_sep_ref.ports["o2"])
+        #u_bend_ref2.connect("o1", ec_top.ports["o4"])
+        u_bend_ref2.connect("o2", straight_ref2.ports["o1"])
+
+        exposed_ports = [
+            ("o1", ec_top.ports["o1"]),
+            ("o2", ec_top.ports["o2"])
+        ]
+        [race_track.add_port(name=name, port=port) for name, port in exposed_ports]
+
+        return race_track
+
+    # create assembly
+    c = gf.Component()
+
+    race_track_top = c << racetrack()
+    race_track_bottom = c << racetrack()
+    race_track_bottom.dmirror_y()
+    race_track_bottom.dmovey(comb_sep)
+
+    # Expose the ports
+    exposed_ports = [
+        ("o1", race_track_top.ports["o1"]),
+        ("o2", race_track_top.ports["o2"]),
+        ("o3", race_track_bottom.ports["o1"]),
+        ("o4", race_track_bottom.ports["o2"]),
+    ]
+
+    [c.add_port(name=name, port=port) for name, port in exposed_ports]
+
+    mmi = c << lnoi400.cells.mmi1x2_optimized1550()
+    mmi.drotate(90)
+    mmi.dmovey(mmi.ports["o1"].dcenter[1], 0.5*c.ports["o1"].dcenter[1]+0.5*c.ports["o3"].dcenter[1]-comb_sep/2.0-h_racetrack)
+    mmi.dmovex(mmi.ports["o3"].dcenter[0], c.ports["o1"].dcenter[0]-DC_ubend_sep-h_racetrack)
+
+    routing_roc = 75.0
+    routing_bend = partial(
+        gf.components.bend_euler,
+        #lnoi400.cells.S_bend_vert,
+        radius=routing_roc,
+        with_arc_floorplan=True,
+    )
+
+    gf.routing.route_single(
+        c,
+        port1=mmi.ports["o2"],
+        port2=c.ports["o3"],
+        cross_section="xs_rwg1000",
+        bend = routing_bend,
+        straight="straight_rwg1000",
+    )
+    gf.routing.route_single(
+        c,
+        port1=mmi.ports["o3"],
+        port2=c.ports["o1"],
+        cross_section="xs_rwg1000",
+        bend = routing_bend,
+        straight="straight_rwg1000",
+    )
+    
+
+    return c
+
+
 #####################
 # 30GHz FSR Racetrack Resonator (Final Design)
 #####################
