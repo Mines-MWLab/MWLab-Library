@@ -921,3 +921,168 @@ def racetrack_30GHzFSR():
     c << racetrack()
 
     return c
+
+#####################
+# dOR_EOM_DC with EMMI splitters
+#####################
+@gf.cell
+def dOR_EOM_DC_EMMI(
+    RT_cross_section: CrossSectionSpec = "xs_rwg3000",
+    DC_cross_section: CrossSectionSpec = "xs_rwg1000",
+    DC_io_wg_sep: float = 25,#15.3,
+    DC_sbend_length: float = 150,
+    DC_central_straight_length: float = 16.92,
+    DC_coupl_wg_sep: float = 0.6,
+    DC_coup_wg_width: float = 1.2,
+    DC_ubend_sep: float = 100,
+    h_racetrack: float = 200.0,
+    ls: float = 1408.0, #3850
+    lextra: float = 364, #205
+    rf_gap: float = 4,
+    rf_central_conductor_width: float = 21.0,
+    h: float = 3.0,
+    r: float = 44.7,
+    t: float = 7.0,
+    s: float = 1.5,
+    c: float = 5.0,
+    with_heater: bool = True,
+    bias_tuning_section_length: float = 700.0,
+    heater_offset: float = 1.2,
+    heater_width: float = 1.0,
+    heater_pad_size: tuple[float, float] = (75.0, 75.0),
+)-> gf.Component:
+
+    circuit = gf.Component()
+
+    # adding subcomponents
+    splitter1 = lnoi400.cells.mmi1x2_optimized1550()
+    splitter2 = lnoi400.cells.mmi2x2_optimized1550()
+
+    EOM = dOR_EOM_DC(
+        RT_cross_section = RT_cross_section,
+        DC_cross_section = DC_cross_section,
+        DC_io_wg_sep = DC_io_wg_sep,
+        DC_sbend_length = DC_sbend_length,
+        DC_central_straight_length = DC_central_straight_length,
+        DC_coupl_wg_sep = DC_coupl_wg_sep,
+        DC_coup_wg_width = DC_coup_wg_width,
+        DC_ubend_sep = DC_ubend_sep,
+        h_racetrack = h_racetrack,
+        ls = ls, #3850
+        lextra = lextra, #205
+        rf_gap = rf_gap,
+        rf_central_conductor_width = rf_central_conductor_width,
+        h = h,
+        r = r,
+        t = t,
+        s = s,
+        c = c,
+    )
+
+    if with_heater:
+        heater = lnoi400.cells.heater_straight_single(
+            length=bias_tuning_section_length,
+            width=heater_width,
+            #offset=heater_offset,
+            pad_size=heater_pad_size,
+        )
+
+        heater_disp = [
+            ls + lextra + h_racetrack + splitter2.xsize/2,
+            rf_central_conductor_width/2 + rf_gap/2 + h + s + h_racetrack + DC_io_wg_sep + heater_offset + heater_width/2
+            ]
+
+    # Push to circuit
+    splitter1_ref = circuit << splitter1
+    splitter2_ref = circuit << splitter2
+    EOM_ref = circuit << EOM
+    heater_ref = circuit << heater if with_heater else None
+
+
+
+    # Move
+    splitter1_ref.movex(-(lextra + 2*h_racetrack + splitter1.xsize))
+    splitter2_ref.rotate(180)
+    splitter2_ref.movex(ls + lextra + 2*h_racetrack + bias_tuning_section_length + splitter2.xsize) if with_heater else splitter2_ref.movex(ls + lextra + 2*h_racetrack)
+
+    heater_ref.movex(heater_disp[0]) if with_heater else None
+    heater_ref.movey(heater_disp[1]) if with_heater else None
+    
+
+    # Connect
+    routing_bend = partial(
+        gf.components.bend_euler,
+        radius=75.0,
+        with_arc_floorplan=True,
+    )
+
+    # Routing call gives a warning
+    gf.routing.route_single(
+        circuit,
+        splitter1_ref.ports["o2"],
+        EOM.ports["o1"],
+        start_straight_length=5.0,
+        end_straight_length=5.0,
+        cross_section="xs_rwg1000",
+        bend=routing_bend,
+        straight="straight_rwg1000",
+    )
+
+    gf.routing.route_single(
+        circuit,
+        splitter1_ref.ports["o3"],
+        EOM.ports["o3"],
+        start_straight_length=5.0,
+        end_straight_length=5.0,
+        cross_section="xs_rwg1000",
+        bend=routing_bend,
+        straight="straight_rwg1000",
+    )
+
+    gf.routing.route_single(
+        circuit,
+        splitter2_ref.ports["o4"],
+        EOM.ports["o2"],
+        start_straight_length=5.0,
+        end_straight_length=5.0,
+        cross_section="xs_rwg1000",
+        bend=routing_bend,
+        straight="straight_rwg1000",
+    )
+
+    gf.routing.route_single(
+        circuit,
+        splitter2_ref.ports["o3"],
+        EOM.ports["o4"],
+        start_straight_length=5.0,
+        end_straight_length=5.0,
+        cross_section="xs_rwg1000",
+        bend=routing_bend,
+        straight="straight_rwg1000",
+    )
+
+    # Define ports
+    exposed_ports = []
+
+    exposed_ports += [
+        ("e1", EOM_ref.ports["e1"]),
+        ("e2", EOM_ref.ports["e2"]),
+    ]
+
+    if with_heater:
+        exposed_ports += [
+            ("e3", heater_ref.ports["e1"]),
+            ("e4",
+                heater_ref.ports["e2"],),
+        ]
+
+
+    exposed_ports += [
+        ("o1", splitter1_ref.ports["o1"]),
+        ("o2", splitter2_ref.ports["o1"]),
+        ("o3", splitter2_ref.ports["o2"]),
+    ]
+
+    [circuit.add_port(name=name, port=port) for name, port in exposed_ports]
+
+    return circuit
