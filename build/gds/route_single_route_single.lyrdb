@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<report-database>
+ <description/>
+ <original-file/>
+ <generator/>
+ <top-cell/>
+ <tags>
+ </tags>
+ <categories>
+  <category>
+   <name>o2 - o2</name>
+   <description/>
+   <categories>
+   </categories>
+  </category>
+ </categories>
+ <cells>
+  <cell>
+   <name>eom_ec_emmi_circuit2_EE_46e9a38b</name>
+   <variant/>
+   <layout-name/>
+   <references>
+   </references>
+  </cell>
+ </cells>
+ <items>
+  <item>
+   <tags/>
+   <category>'o2 - o2'</category>
+   <cell>eom_ec_emmi_circuit2_EE_46e9a38b</cell>
+   <visited>false</visited>
+   <multiplicity>1</multiplicity>
+   <comment/>
+   <image/>
+   <values>
+    <value>text: 'Error while trying to place route from o2 to o2 at points (dbu): [2995250,3717750, 3096660,3717750, 2893840,4011250, 6863465,4011250, 6863465,4685000]'</value>
+    <value>text: 'Exception: Non-manhattan vectors are not supported'</value>
+    <value>polygon: (2995.25,3717.25;2995.25,3718.25;3095.707,3718.25;2893.144,4011.377;2893.34,4011.75;6862.965,4011.75;6862.965,4685;6863.965,4685;6863.965,4010.75;2894.793,4010.75;3097.356,3717.623;3097.16,3717.25)</value>
+   </values>
+  </item>
+ </items>
+</report-database>
