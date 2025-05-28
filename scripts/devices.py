@@ -644,7 +644,7 @@ def EOcomb(
     DC_coup_wg_width: float = 1.2,
     DC_ubend_sep: float = 100,
     h_racetrack: float = 200.0,
-    ls: float = 1925, #3850
+    ls: float = 1788, #3850
     rf_gap:float = 4,
     rf_central_conductor_width: float = 21.0,
     h: float = 3.0,
@@ -749,7 +749,7 @@ def dualEOcomb(
     DC_coup_wg_width: float = 1.2,
     DC_ubend_sep: float = 100,
     h_racetrack: float = 200.0,
-    ls: float = 1925, #3850
+    ls: float = 1788, #3850
     rf_gap:float = 4,
     rf_central_conductor_width: float = 21.0,
     h: float = 3.0,
@@ -831,18 +831,18 @@ def dualEOcomb(
 
     # Expose the ports
     exposed_ports = [
-        ("o1", race_track_top.ports["o1"]),
+        ("ocb", race_track_top.ports["o1"]),
         ("o2", race_track_top.ports["o2"]),
-        ("o3", race_track_bottom.ports["o1"]),
-        ("o4", race_track_bottom.ports["o2"]),
+        ("oct", race_track_bottom.ports["o1"]),
+        ("o3", race_track_bottom.ports["o2"]),
     ]
 
     [c.add_port(name=name, port=port) for name, port in exposed_ports]
 
     mmi = c << lnoi400.cells.mmi1x2_optimized1550()
     mmi.drotate(90)
-    mmi.dmovey(mmi.ports["o1"].dcenter[1], 0.5*c.ports["o1"].dcenter[1]+0.5*c.ports["o3"].dcenter[1]-comb_sep/2.0-h_racetrack)
-    mmi.dmovex(mmi.ports["o3"].dcenter[0], c.ports["o1"].dcenter[0]-DC_ubend_sep-h_racetrack)
+    mmi.dmovey(mmi.ports["o1"].dcenter[1], 0.5*c.ports["ocb"].dcenter[1]+0.5*c.ports["oct"].dcenter[1]-comb_sep/2.0-h_racetrack)
+    mmi.dmovex(mmi.ports["o3"].dcenter[0], c.ports["ocb"].dcenter[0]-DC_ubend_sep-h_racetrack)
 
     routing_roc = 75.0
     routing_bend = partial(
@@ -855,7 +855,7 @@ def dualEOcomb(
     gf.routing.route_single(
         c,
         port1=mmi.ports["o2"],
-        port2=c.ports["o3"],
+        port2=c.ports["oct"],
         cross_section="xs_rwg1000",
         bend = routing_bend,
         straight="straight_rwg1000",
@@ -863,12 +863,15 @@ def dualEOcomb(
     gf.routing.route_single(
         c,
         port1=mmi.ports["o3"],
-        port2=c.ports["o1"],
+        port2=c.ports["ocb"],
         cross_section="xs_rwg1000",
         bend = routing_bend,
         straight="straight_rwg1000",
     )
-    
+    exposed_ports2 = [
+        ("o1", mmi.ports["o1"]),
+    ]
+    [c.add_port(name=name, port=port) for name, port in exposed_ports2]
 
     return c
 
@@ -937,7 +940,7 @@ def dOR_EOM_DC_EMMI(
     DC_ubend_sep: float = 100,
     h_racetrack: float = 200.0,
     ls: float = 1408.0, #3850
-    lextra: float = 364, #205
+    lextra: float = 364/2, #205/2
     rf_gap: float = 4,
     rf_central_conductor_width: float = 21.0,
     h: float = 3.0,
@@ -946,10 +949,11 @@ def dOR_EOM_DC_EMMI(
     s: float = 1.5,
     c: float = 5.0,
     with_heater: bool = True,
-    bias_tuning_section_length: float = 700.0,
+    bias_tuning_section_length: float = 500.0,
     heater_offset: float = 1.2,
     heater_width: float = 1.0,
     heater_pad_size: tuple[float, float] = (75.0, 75.0),
+    heater_xdisp: float = 0.0,
 )-> gf.Component:
 
     circuit = gf.Component()
@@ -988,7 +992,8 @@ def dOR_EOM_DC_EMMI(
         )
 
         heater_disp = [
-            ls + lextra + h_racetrack + splitter2.xsize/2,
+            #heater_xdisp + ls + lextra + h_racetrack - heater.xsize/2 + 0*splitter2.xsize/2,
+            heater_xdisp + ls/2 + lextra + h_racetrack,
             rf_central_conductor_width/2 + rf_gap/2 + h + s + h_racetrack + DC_io_wg_sep + heater_offset + heater_width/2
             ]
 
@@ -999,13 +1004,17 @@ def dOR_EOM_DC_EMMI(
     heater_ref = circuit << heater if with_heater else None
 
 
-
+    usafetygap = 0.4*h_racetrack
     # Move
-    splitter1_ref.movex(-(lextra + 2*h_racetrack + splitter1.xsize))
+    #splitter1_ref.movex(-(lextra + 2*h_racetrack + splitter1.xsize))
+    splitter1_ref.dmovex(splitter1_ref.ports["o1"].dcenter[0], EOM.dx - lextra -ls/2.0 - usafetygap - 1.0*h_racetrack - splitter1.xsize)
     splitter2_ref.rotate(180)
-    splitter2_ref.movex(ls + lextra + 2*h_racetrack + bias_tuning_section_length + splitter2.xsize) if with_heater else splitter2_ref.movex(ls + lextra + 2*h_racetrack)
+    #splitter2_ref.movex(ls + lextra + 1*h_racetrack + bias_tuning_section_length + splitter2.xsize) if with_heater else splitter2_ref.movex(ls + lextra + 1*h_racetrack)
+    splitter2_ref.dmovex(splitter2_ref.ports["o2"].dcenter[0],EOM.dx + lextra +ls/2.0 + usafetygap + 1.0*h_racetrack + splitter2.xsize)
 
-    heater_ref.movex(heater_disp[0]) if with_heater else None
+
+    #heater_ref.movex(heater_disp[0]) if with_heater else None
+    heater_ref.dmovex(heater_ref.ports["e2"].dcenter[0], EOM.dx + heater_disp[0]) if with_heater else None
     heater_ref.movey(heater_disp[1]) if with_heater else None
     
 

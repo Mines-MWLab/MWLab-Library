@@ -1,0 +1,15 @@
+c = 299792458;
+lbend = 456.351e-6;
+ng_bend = 2.29255;
+ng = 2.2089;
+ls_tot = 1900e-6;
+
+
+L = 2*ls_tot + 2*lbend;
+
+ng_eff = ng_bend*2*lbend/L + ng*2*ls_tot/L
+
+FSR = c./(L*ng_eff)
+
+FSRtarget = 30e9;
+c./FSRtarget
