@@ -950,7 +950,7 @@ def dOR_EOM_DC_EMMI(
     c: float = 5.0,
     with_heater: bool = True,
     bias_tuning_section_length: float = 500.0,
-    heater_offset: float = 1.2,
+    heater_offset: float = 1.5,
     heater_width: float = 1.0,
     heater_pad_size: tuple[float, float] = (75.0, 75.0),
     heater_xdisp: float = 0.0,
@@ -987,7 +987,7 @@ def dOR_EOM_DC_EMMI(
         heater = lnoi400.cells.heater_straight_single(
             length=bias_tuning_section_length,
             width=heater_width,
-            #offset=heater_offset,
+            # offset=heater_offset,
             pad_size=heater_pad_size,
         )
 
@@ -996,26 +996,34 @@ def dOR_EOM_DC_EMMI(
             heater_xdisp + ls/2 + lextra + h_racetrack,
             rf_central_conductor_width/2 + rf_gap/2 + h + s + h_racetrack + DC_io_wg_sep + heater_offset + heater_width/2
             ]
+        
+        heater_disp2 = [
+            0.0,
+            rf_central_conductor_width/2 + rf_gap/2 + h + s + h_racetrack + heater_offset + heater_width/2  + 0.2
+        ]
 
     # Push to circuit
     splitter1_ref = circuit << splitter1
     splitter2_ref = circuit << splitter2
     EOM_ref = circuit << EOM
     heater_ref = circuit << heater if with_heater else None
+    heater_ref2 = circuit << heater if with_heater else None
+    heater_ref3 = circuit << heater if with_heater else None
 
 
     usafetygap = 0.4*h_racetrack
     # Move
-    #splitter1_ref.movex(-(lextra + 2*h_racetrack + splitter1.xsize))
     splitter1_ref.dmovex(splitter1_ref.ports["o1"].dcenter[0], EOM.dx - lextra -ls/2.0 - usafetygap - 1.0*h_racetrack - splitter1.xsize)
     splitter2_ref.rotate(180)
-    #splitter2_ref.movex(ls + lextra + 1*h_racetrack + bias_tuning_section_length + splitter2.xsize) if with_heater else splitter2_ref.movex(ls + lextra + 1*h_racetrack)
     splitter2_ref.dmovex(splitter2_ref.ports["o2"].dcenter[0],EOM.dx + lextra +ls/2.0 + usafetygap + 1.0*h_racetrack + splitter2.xsize)
 
 
-    #heater_ref.movex(heater_disp[0]) if with_heater else None
     heater_ref.dmovex(heater_ref.ports["e2"].dcenter[0], EOM.dx + heater_disp[0]) if with_heater else None
     heater_ref.movey(heater_disp[1]) if with_heater else None
+
+    heater_ref2.movey(heater_disp2[1]) if with_heater else None
+    heater_ref3.movey(heater_disp2[1]) if with_heater else None
+    heater_ref3.mirror_y() if with_heater else None
     
 
     # Connect
