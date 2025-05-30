@@ -1042,7 +1042,7 @@ def dualEOcomb_sbend(
     c = gf.Component()
 
     def singlecomb():
-        return mpd.EOcomb(
+        return EOcomb(
                 RT_cross_section = RT_cross_section,
                 DC_cross_section = DC_cross_section,
                 DC_io_wg_sep = DC_io_wg_sep,
