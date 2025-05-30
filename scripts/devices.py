@@ -1200,7 +1200,7 @@ def dOR_EOM_DC_EMMI(
     splitter1 = lnoi400.cells.mmi1x2_optimized1550()
     splitter2 = lnoi400.cells.mmi2x2_optimized1550()
 
-    EOM = mpl.dOR_EOM_DC(
+    EOM = dOR_EOM_DC(
         RT_cross_section = RT_cross_section,
         DC_cross_section = DC_cross_section,
         DC_io_wg_sep = DC_io_wg_sep,
