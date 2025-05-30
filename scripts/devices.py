@@ -1188,6 +1188,7 @@ def dOR_EOM_DC_EMMI(
     with_heater: bool = True,
     bias_tuning_section_length: float = 500.0,
     heater_offset: float = 1.5,
+    heater_x: float = 0.0,
     heater_width: float = 1.0,
     heater_pad_size: tuple[float, float] = (75.0, 75.0),
     heater_xdisp: float = 0.0,
@@ -1260,6 +1261,10 @@ def dOR_EOM_DC_EMMI(
 
     heater_ref2.movey(heater_disp2[1]) if with_heater else None
     heater_ref3.movey(heater_disp2[1]) if with_heater else None
+
+    heater_ref2.dmovex(EOM.ports["e1"].dcenter[0], -heater_ref2.dcenter[0] + heater_x) if with_heater else None
+    heater_ref3.dmovex(EOM.ports["e1"].dcenter[0], -heater_ref3.dcenter[0] + heater_x) if with_heater else None
+
     heater_ref3.mirror_y() if with_heater else None
     
 
@@ -1326,8 +1331,11 @@ def dOR_EOM_DC_EMMI(
     if with_heater:
         exposed_ports += [
             ("e3", heater_ref.ports["e1"]),
-            ("e4",
-                heater_ref.ports["e2"],),
+            ("e4", heater_ref.ports["e2"],),
+            ("e5", heater_ref2.ports["e1"],),
+            ("e6", heater_ref2.ports["e2"],),
+            ("e7", heater_ref3.ports["e1"],),
+            ("e8", heater_ref3.ports["e2"],),
         ]
 
 
