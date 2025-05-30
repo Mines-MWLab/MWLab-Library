@@ -475,6 +475,9 @@ def dOR_EOM_DC(
     t: float = 7.0,
     s: float = 1.5,
     c: float = 5.0,
+    start_width: float = 80.0,
+    length_straight: float = 10.0,
+    length_tapered: float = 190.0,
 )-> gf.Component:
 
     #define constants for race track
@@ -551,9 +554,9 @@ def dOR_EOM_DC(
         bondpad = {
                     "component": "CPW_pad_linear",
                     "settings": {
-                    "start_width": 80.0,
-                    "length_straight": 10.0,
-                    "length_tapered": 190.0,
+                    "start_width": start_width,
+                    "length_straight": length_straight,
+                    "length_tapered": length_tapered,
             },
         }
         )
@@ -1192,6 +1195,9 @@ def dOR_EOM_DC_EMMI(
     heater_width: float = 1.0,
     heater_pad_size: tuple[float, float] = (75.0, 75.0),
     heater_xdisp: float = 0.0,
+    start_width: float = 80.0,
+    length_straight: float = 10.0,
+    length_tapered: float = 190.0,
 )-> gf.Component:
 
     circuit = gf.Component()
@@ -1219,6 +1225,9 @@ def dOR_EOM_DC_EMMI(
         t = t,
         s = s,
         c = c,
+        start_width = start_width,
+        length_straight = length_straight, 
+        length_tapered = length_tapered, 
     )
 
     if with_heater:
