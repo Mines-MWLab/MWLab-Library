@@ -2,6 +2,7 @@ import gdsfactory as gf
 import lnoi400
 from gplugins.common.config import PATH
 from gdsfactory.typings import CrossSectionSpec
+from gdsfactory.typings import ComponentSpec
 from lnoi400.tech import LAYER, xs_uni_cpw
 from lnoi400.spline import bend_S_spline_varying_width
 import numpy as np
