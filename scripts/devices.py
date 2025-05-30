@@ -537,7 +537,7 @@ def dOR_EOM_DC(
 
 
     # create the Tcell component with NO GSG LANDING
-    rf_line = lnoi400.cells.trail_cpw(
+    rf_line = mpl.trail_cpw_mpl(
         length = modulation_length,
         signal_width = rf_central_conductor_width,
         gap_width = rf_gap,
