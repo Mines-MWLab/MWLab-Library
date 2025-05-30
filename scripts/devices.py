@@ -1262,8 +1262,9 @@ def dOR_EOM_DC_EMMI(
     heater_ref2.movey(heater_disp2[1]) if with_heater else None
     heater_ref3.movey(heater_disp2[1]) if with_heater else None
 
-    heater_ref2.dmovex(EOM.ports["e1"].dcenter[0], -heater_ref2.dcenter[0] + heater_x) if with_heater else None
-    heater_ref3.dmovex(EOM.ports["e1"].dcenter[0], -heater_ref3.dcenter[0] + heater_x) if with_heater else None
+    heater_ref2.dmovex(heater_ref2.ports["e2"].dcenter[0],  heater_x + EOM.dxsize/2 - heater_ref2.dxsize/2) if with_heater else None
+    heater_ref3.dmovex(heater_ref3.ports["e2"].dcenter[0],  heater_x + EOM.dxsize/2 - heater_ref3.dxsize/2) if with_heater else None
+
 
     heater_ref3.mirror_y() if with_heater else None
     
