@@ -652,6 +652,8 @@ def EOcomb(
     t: float = 7.0,
     s: float = 1.5,
     c: float = 5.0,
+    RF_res_layout_path = None,
+    RF_pad_layout_path = None,
 )-> gf.Component:
 
     lextra = 0
@@ -710,7 +712,9 @@ def EOcomb(
 
         exposed_ports = [
             ("o1", ec_top.ports["o1"]),
-            ("o2", ec_top.ports["o2"])
+            ("o2", ec_top.ports["o2"]),
+            ("ubend1", u_bend_ref1.ports["o1"]),
+            ("ubend2", u_bend_ref1.ports["o2"])
         ]
         [race_track.add_port(name=name, port=port) for name, port in exposed_ports]
 
@@ -718,18 +722,43 @@ def EOcomb(
 
     # create assembly
     c = gf.Component()
+    rt_c = racetrack()
+    race_track_top = c << rt_c
 
-    race_track_top = c << racetrack()
+    rfpadgap = 15
+    if RF_res_layout_path:
+        mw = gf.read.import_gds(RF_res_layout_path)
+        layer_map = {(1, 0): (21, 0)}
+        mw.remap_layers(layer_map)    
+        c_dx = c.dx
+        c_dy = 0.5*race_track_top.ports["ubend1"].dy + 0.5*race_track_top.ports["ubend2"].dy
+        crf = c << mw
+        crf.dmovex(crf.dx, c_dx)
+        crf.dmovey(crf.dy, c_dy)
+        crf.dmirror_y()
+        if RF_pad_layout_path:
+            pad = gf.read.import_gds(RF_pad_layout_path)
+            pad.remap_layers(layer_map)
+            rf_xsize = crf.xsize
+            cpad = c << pad
+            cpad.dmovex(cpad.dx, c_dx + rf_xsize/2 + cpad.xsize/2+rfpadgap)
+            cpad.dmovey(cpad.dy, c_dy)
+            cpad.dmirror_y()
+    
     race_track_top.dmirror_y()
+    
+    
 
     # Expose the ports
     exposed_ports = [
         ("o1", race_track_top.ports["o1"]),
         ("o2", race_track_top.ports["o2"]),
+        #("ubend1", race_track_top.ports["ubend1"]),
+        #("ubend2", race_track_top.ports["ubend2"]),
     ]
 
     [c.add_port(name=name, port=port) for name, port in exposed_ports]
-
+    c.flatten()
     return c
 
 
@@ -875,6 +904,110 @@ def dualEOcomb(
 
     return c
 
+
+#####################
+# Dual EO comb
+#####################
+@gf.cell
+def dualEOcomb2(
+    comb_sep: float = 101.25+50,
+    RT_cross_section: CrossSectionSpec = "xs_rwg3000",
+    DC_cross_section: CrossSectionSpec = "xs_rwg1000",
+    DC_io_wg_sep: float = 25,#15.3,
+    DC_sbend_length: float = 150,
+    DC_central_straight_length: float = 16.92,
+    DC_coupl_wg_sep: float = 0.6,
+    DC_coup_wg_width: float = 1.2,
+    DC_ubend_sep: float = 100,
+    h_racetrack: float = 200.0,
+    ls: float = 1788, #3850
+    rf_gap:float = 4,
+    rf_central_conductor_width: float = 21.0,
+    h: float = 3.0,
+    r: float = 44.7,
+    t: float = 7.0,
+    s: float = 1.5,
+    c: float = 5.0,
+    RF_res_layout_path = None,
+    RF_pad_layout_path = None,
+)-> gf.Component:
+
+    # create assembly
+    c = gf.Component()
+
+    def singlecomb():
+        return EOcomb(
+                RT_cross_section = RT_cross_section,
+                DC_cross_section = DC_cross_section,
+                DC_io_wg_sep = DC_io_wg_sep,
+                DC_sbend_length = DC_sbend_length,
+                DC_central_straight_length = DC_central_straight_length,
+                DC_coupl_wg_sep = DC_coupl_wg_sep,
+                DC_coup_wg_width = DC_coup_wg_width,
+                DC_ubend_sep = DC_ubend_sep,
+                h_racetrack = h_racetrack,
+                ls = ls,
+                rf_gap = rf_gap,
+                rf_central_conductor_width = rf_central_conductor_width,
+                h = h,
+                r = r,
+                t = t,
+                s = s,
+                c = c,
+                RF_res_layout_path = RF_res_layout_path,
+                RF_pad_layout_path = RF_pad_layout_path,
+        )
+    race_track_top = c << singlecomb()
+    race_track_top.dmirror_y()
+    race_track_bottom = c << singlecomb()
+    #race_track_bottom.dmirror_y()
+    race_track_bottom.dmovey(comb_sep)
+
+    # Expose the ports
+    exposed_ports = [
+        ("ocb", race_track_top.ports["o1"]),
+        ("o2", race_track_top.ports["o2"]),
+        ("oct", race_track_bottom.ports["o1"]),
+        ("o3", race_track_bottom.ports["o2"]),
+    ]
+
+    [c.add_port(name=name, port=port) for name, port in exposed_ports]
+
+    mmi = c << lnoi400.cells.mmi1x2_optimized1550()
+    mmi.drotate(90)
+    mmi.dmovey(mmi.ports["o1"].dcenter[1], 0.5*c.ports["ocb"].dcenter[1]+0.5*c.ports["oct"].dcenter[1]-comb_sep/2.0-h_racetrack)
+    mmi.dmovex(mmi.ports["o3"].dcenter[0], c.ports["ocb"].dcenter[0]-DC_ubend_sep-h_racetrack)
+
+    routing_roc = 75.0
+    routing_bend = partial(
+        gf.components.bend_euler,
+        #lnoi400.cells.S_bend_vert,
+        radius=routing_roc,
+        with_arc_floorplan=True,
+    )
+
+    gf.routing.route_single(
+        c,
+        port1=mmi.ports["o2"],
+        port2=c.ports["oct"],
+        cross_section="xs_rwg1000",
+        bend = routing_bend,
+        straight="straight_rwg1000",
+    )
+    gf.routing.route_single(
+        c,
+        port1=mmi.ports["o3"],
+        port2=c.ports["ocb"],
+        cross_section="xs_rwg1000",
+        bend = routing_bend,
+        straight="straight_rwg1000",
+    )
+    exposed_ports2 = [
+        ("o1", mmi.ports["o1"]),
+    ]
+    [c.add_port(name=name, port=port) for name, port in exposed_ports2]
+
+    return c
 
 #####################
 # 30GHz FSR Racetrack Resonator (Final Design)
