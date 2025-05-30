@@ -8,7 +8,7 @@
  </tags>
  <categories>
   <category>
-   <name>o2 - o2</name>
+   <name>o3 - o2</name>
    <description/>
    <categories>
    </categories>
@@ -16,7 +16,7 @@
  </categories>
  <cells>
   <cell>
-   <name>eom_ec_emmi_circuit2_EE_46e9a38b</name>
+   <name>duel_eo_comb_circuit9_D_55a536d3</name>
    <variant/>
    <layout-name/>
    <references>
@@ -26,16 +26,16 @@
  <items>
   <item>
    <tags/>
-   <category>'o2 - o2'</category>
-   <cell>eom_ec_emmi_circuit2_EE_46e9a38b</cell>
+   <category>'o3 - o2'</category>
+   <cell>duel_eo_comb_circuit9_D_55a536d3</cell>
    <visited>false</visited>
    <multiplicity>1</multiplicity>
    <comment/>
    <image/>
    <values>
-    <value>text: 'Error while trying to place route from o2 to o2 at points (dbu): [2995250,3717750, 3096660,3717750, 2893840,4011250, 6863465,4011250, 6863465,4685000]'</value>
+    <value>text: 'Error while trying to place route from o3 to o2 at points (dbu): [8238317,4098950, 9838317,3999300, 9838317,4550000, 8000000,4550000, 8000000,4685000]'</value>
     <value>text: 'Exception: Non-manhattan vectors are not supported'</value>
-    <value>polygon: (2995.25,3717.25;2995.25,3718.25;3095.707,3718.25;2893.144,4011.377;2893.34,4011.75;6862.965,4011.75;6862.965,4685;6863.965,4685;6863.965,4010.75;2894.793,4010.75;3097.356,3717.623;3097.16,3717.25)</value>
+    <value>polygon: (9838.785,3998.77;8238.286,4098.451;8238.348,4099.449;9837.817,3999.832;9837.817,4549.5;7999.5,4549.5;7999.5,4685;8000.5,4685;8000.5,4550.5;9838.817,4550.5;9838.817,3998.8)</value>
    </values>
   </item>
  </items>
