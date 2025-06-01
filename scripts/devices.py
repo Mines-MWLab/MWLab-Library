@@ -657,6 +657,8 @@ def EOcomb(
     c: float = 5.0,
     RF_res_layout_path = None,
     RF_pad_layout_path = None,
+    RF_pad_pos = "right",
+    RF_pad_gap:float  = 15,
 )-> gf.Component:
 
     lextra = 0
@@ -728,7 +730,7 @@ def EOcomb(
     rt_c = racetrack()
     race_track_top = c << rt_c
 
-    rfpadgap = 15
+    rfpadgap = RF_pad_gap
     if RF_res_layout_path:
         mw = gf.read.import_gds(RF_res_layout_path)
         layer_map = {(1, 0): (21, 0)}
@@ -743,10 +745,16 @@ def EOcomb(
             pad = gf.read.import_gds(RF_pad_layout_path)
             pad.remap_layers(layer_map)
             rf_xsize = crf.xsize
+            rf_ysize = crf.ysize
             cpad = c << pad
-            cpad.dmovex(cpad.dx, c_dx + rf_xsize/2 + cpad.xsize/2+rfpadgap)
-            cpad.dmovey(cpad.dy, c_dy)
-            cpad.dmirror_y()
+            if RF_pad_pos == "right":
+                cpad.dmovex(cpad.dx, c_dx + rf_xsize/2 + cpad.xsize/2+rfpadgap)
+                cpad.dmovey(cpad.dy, c_dy)
+                cpad.dmirror_y()
+            elif RF_pad_pos == "bottom":
+                cpad.dmovex(cpad.dx, c_dx)
+                cpad.dmovey(cpad.dy, c_dy - rf_ysize/2- cpad.ysize/2 -rfpadgap)
+                cpad.dmirror_y()
     
     race_track_top.dmirror_y()
     
