@@ -8,7 +8,7 @@
  </tags>
  <categories>
   <category>
-   <name>o3 - o2</name>
+   <name>o2 - o2</name>
    <description/>
    <categories>
    </categories>
@@ -16,7 +16,7 @@
  </categories>
  <cells>
   <cell>
-   <name>duel_eo_comb_circuit9_D_561e45c5</name>
+   <name>eom_ec_emmi_circuit4_EE_3a18df34</name>
    <variant/>
    <layout-name/>
    <references>
@@ -26,16 +26,16 @@
  <items>
   <item>
    <tags/>
-   <category>'o3 - o2'</category>
-   <cell>duel_eo_comb_circuit9_D_561e45c5</cell>
+   <category>'o2 - o2'</category>
+   <cell>eom_ec_emmi_circuit4_EE_3a18df34</cell>
    <visited>false</visited>
    <multiplicity>1</multiplicity>
    <comment/>
    <image/>
    <values>
-    <value>text: 'Error while trying to place route from o3 to o2 at points (dbu): [8244967,3823325, 9834967,3823325, 9834967,4440000, 8000000,4485000, 8000000,4685000]'</value>
-    <value>text: 'Exception: Non-manhattan vectors are not supported'</value>
-    <value>polygon: (8244.967,3822.825;8244.967,3823.825;9834.467,3823.825;9834.467,4439.512;7999.5,4484.512;7999.5,4685;8000.5,4685;8000.5,4485.488;9835.467,4440.488;9835.467,3822.825)</value>
+    <value>text: 'Error while trying to place route from o2 to o2 at points (dbu): [3269550,4235550, 3385932,4235550, 3385932,4557650, 6485482,4557650, 6485482,4641650, 7063465,4641650, 7063465,4685000]'</value>
+    <value>text: 'Exception: distance between points 6485482,4557650 and 6485482,4641650 is too small to safely place bends pt=6485482,4641650, old_pt=6485482,4557650, pt.distance(old_pt)=84000.0 &lt; 2 * b90r=150000'</value>
+    <value>polygon: (3269.55,4235.05;3269.55,4236.05;3385.432,4236.05;3385.432,4558.15;6484.982,4558.15;6484.982,4642.15;7062.965,4642.15;7062.965,4685;7063.965,4685;7063.965,4641.15;6485.982,4641.15;6485.982,4557.15;3386.432,4557.15;3386.432,4235.05)</value>
    </values>
   </item>
  </items>
