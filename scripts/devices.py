@@ -660,6 +660,7 @@ def EOcomb(
     RF_pad_pos = "right",
     RF_pad_gap:float  = 15,
     RF_flipy: bool = False,
+    opt_flipy: bool = False,
 )-> gf.Component:
 
     lextra = 0
@@ -765,7 +766,8 @@ def EOcomb(
             if RF_pad_layout_path:
                 crf.dmirror_y(c_dy_upd)
         
-    
+    if opt_flipy:
+        race_track_top.dmirror_y(0.5*race_track_top.ports["ubend1"].dy + 0.5*race_track_top.ports["ubend2"].dy)
     
 
     # Expose the ports
