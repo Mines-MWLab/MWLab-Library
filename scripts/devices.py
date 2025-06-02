@@ -659,6 +659,7 @@ def EOcomb(
     RF_pad_layout_path = None,
     RF_pad_pos = "right",
     RF_pad_gap:float  = 15,
+    RF_flipy: bool = False,
 )-> gf.Component:
 
     lextra = 0
@@ -755,8 +756,13 @@ def EOcomb(
                 cpad.dmovex(cpad.dx, c_dx)
                 cpad.dmovey(cpad.dy, c_dy - rf_ysize/2- cpad.ysize/2 -rfpadgap)
                 cpad.dmirror_y()
-    
-    race_track_top.dmirror_y()
+        
+        race_track_top.dmirror_y()
+        if RF_flipy:
+            c_dy_upd = 0.5*race_track_top.ports["ubend1"].dy + 0.5*race_track_top.ports["ubend2"].dy
+            cpad.dmirror_y(c_dy_upd)
+            crf.dmirror_y(c_dy_upd)
+        
     
     
 
