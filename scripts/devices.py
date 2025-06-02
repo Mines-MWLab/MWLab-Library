@@ -757,11 +757,13 @@ def EOcomb(
                 cpad.dmovey(cpad.dy, c_dy - rf_ysize/2- cpad.ysize/2 -rfpadgap)
                 cpad.dmirror_y()
         
-        race_track_top.dmirror_y()
-        if RF_flipy:
-            c_dy_upd = 0.5*race_track_top.ports["ubend1"].dy + 0.5*race_track_top.ports["ubend2"].dy
+    race_track_top.dmirror_y()
+    if RF_flipy:
+        c_dy_upd = 0.5*race_track_top.ports["ubend1"].dy + 0.5*race_track_top.ports["ubend2"].dy
+        if RF_res_layout_path:
             cpad.dmirror_y(c_dy_upd)
-            crf.dmirror_y(c_dy_upd)
+            if RF_pad_layout_path:
+                crf.dmirror_y(c_dy_upd)
         
     
     
