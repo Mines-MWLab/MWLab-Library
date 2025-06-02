@@ -8,7 +8,7 @@
  </tags>
  <categories>
   <category>
-   <name>o2 - o2</name>
+   <name>o1 - o2</name>
    <description/>
    <categories>
    </categories>
@@ -16,7 +16,7 @@
  </categories>
  <cells>
   <cell>
-   <name>EOcomb_tau_circuit18_EE_d7964408</name>
+   <name>EOcomb_tau_circuit25_EE_933fd4bc</name>
    <variant/>
    <layout-name/>
    <references>
@@ -26,16 +26,16 @@
  <items>
   <item>
    <tags/>
-   <category>'o2 - o2'</category>
-   <cell>EOcomb_tau_circuit18_EE_d7964408</cell>
+   <category>'o1 - o2'</category>
+   <cell>EOcomb_tau_circuit25_EE_933fd4bc</cell>
    <visited>false</visited>
    <multiplicity>1</multiplicity>
    <comment/>
    <image/>
    <values>
-    <value>text: 'Error while trying to place route from o2 to o2 at points (dbu): [1316920,897009, 2287726,897009, 2287726,1152009, 5505000,1152009, 5505000,1595000, 5523950,1595000, 5523950,2879310, 5951282,2879310, 5951282,4191130, 7613465,4191130, 7613465,4685000]'</value>
-    <value>text: 'Exception: distance between points 5505000,1595000 and 5523950,1595000 is too small to safely place bends pt.to_s()=\'5523950,1595000\', old_pt.to_s()=\'5505000,1595000\', pt.distance(old_pt)=18950.0 &lt; b90r=75000'</value>
-    <value>polygon: (1316.92,896.509;1316.92,897.509;2287.226,897.509;2287.226,1152.509;5504.5,1152.509;5504.5,1595.5;5523.45,1595.5;5523.45,2879.81;5950.782,2879.81;5950.782,4191.63;7612.965,4191.63;7612.965,4685;7613.965,4685;7613.965,4190.63;5951.782,4190.63;5951.782,2878.81;5524.45,2878.81;5524.45,1594.5;5505.5,1594.5;5505.5,1151.509;2288.226,1151.509;2288.226,896.509)</value>
+    <value>text: 'Error while trying to place route from o1 to o2 at points (dbu): [5832418,1412009, 700000,1412009, 700000,1545000, 5573950,1545000, 5573950,2829310, 6001282,2829310, 6001282,4141130, 7963465,4141130, 7963465,4685000]'</value>
+    <value>text: 'Exception: distance between points 700000,1412009 and 700000,1545000 is too small to safely place bends pt=700000,1545000, old_pt=700000,1412009, pt.distance(old_pt)=132991.0 &lt; 2 * b90r=150000'</value>
+    <value>polygon: (699.5,1411.509;699.5,1545.5;5573.45,1545.5;5573.45,2829.81;6000.782,2829.81;6000.782,4141.63;7962.965,4141.63;7962.965,4685;7963.965,4685;7963.965,4140.63;6001.782,4140.63;6001.782,2828.81;5574.45,2828.81;5574.45,1544.5;700.5,1544.5;700.5,1412.509;5832.418,1412.509;5832.418,1411.509)</value>
    </values>
   </item>
  </items>
