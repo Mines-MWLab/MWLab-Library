@@ -16,7 +16,7 @@
  </categories>
  <cells>
   <cell>
-   <name>eom_ec_emmi_circuit4_EE_3a18df34</name>
+   <name>EOcomb_circuit15_EEOcom_bd4829d5</name>
    <variant/>
    <layout-name/>
    <references>
@@ -27,15 +27,15 @@
   <item>
    <tags/>
    <category>'o2 - o2'</category>
-   <cell>eom_ec_emmi_circuit4_EE_3a18df34</cell>
+   <cell>EOcomb_circuit15_EEOcom_bd4829d5</cell>
    <visited>false</visited>
    <multiplicity>1</multiplicity>
    <comment/>
    <image/>
    <values>
-    <value>text: 'Error while trying to place route from o2 to o2 at points (dbu): [3269550,4235550, 3385932,4235550, 3385932,4557650, 6485482,4557650, 6485482,4641650, 7063465,4641650, 7063465,4685000]'</value>
-    <value>text: 'Exception: distance between points 6485482,4557650 and 6485482,4641650 is too small to safely place bends pt=6485482,4641650, old_pt=6485482,4557650, pt.distance(old_pt)=84000.0 &lt; 2 * b90r=150000'</value>
-    <value>polygon: (3269.55,4235.05;3269.55,4236.05;3385.432,4236.05;3385.432,4558.15;6484.982,4558.15;6484.982,4642.15;7062.965,4642.15;7062.965,4685;7063.965,4685;7063.965,4641.15;6485.982,4641.15;6485.982,4557.15;3386.432,4557.15;3386.432,4235.05)</value>
+    <value>text: 'Error while trying to place route from o2 to o2 at points (dbu): [1116920,544000, 2744920,544000, 2744920,799000, 505000,799000, 505000,1595000, 5560950,1595000, 5521250,2583310, 5911910,2583310, 5911910,4191130, 7463465,4191130, 7463465,4685000]'</value>
+    <value>text: 'Exception: Non-manhattan vectors are not supported'</value>
+    <value>polygon: (1116.92,543.5;1116.92,544.5;2744.42,544.5;2744.42,798.5;504.5,798.5;504.5,1595.5;5560.43,1595.5;5520.73,2583.79;5520.75,2583.81;5911.41,2583.81;5911.41,4191.63;7462.965,4191.63;7462.965,4685;7463.965,4685;7463.965,4190.63;5912.41,4190.63;5912.41,2582.81;5521.77,2582.81;5561.47,1594.52;5561.45,1594.5;505.5,1594.5;505.5,799.5;2745.42,799.5;2745.42,543.5)</value>
    </values>
   </item>
  </items>
