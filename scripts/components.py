@@ -902,6 +902,68 @@ def linear_inverse_taper_AQ(
 #####################################################################################
 # Author: Redwan Islam, ORC 2025
 
+
+##custom eo_phase_shifter
+@gf.cell
+def eo_phase_shifter_no_taper(
+    modulation_length: float = 7500.0,
+    cross_section: CrossSectionSpec = "xs_rwg2000",
+    # RF parameters for CPW line
+    rf_central_conductor_width: float = 10.0,
+    rf_ground_planes_width: float = 180.0,
+    rf_gap: float = 4.0,
+    cpw_cell: ComponentSpec = uni_cpw_straight,
+    draw_cpw: bool = True,
+) -> gf.Component:
+    """
+    Phase shifter with a constant rib waveguide width (no tapers), intended
+    for the custom_mzm. The waveguide is located within the gap of a CPW
+    transmission line.
+    """
+    ps = gf.Component()
+    xs_modulator = gf.get_cross_section(cross_section)
+
+    # The phase modulation section is a simple straight waveguide
+    wg_phase_modulation = gf.components.straight(
+        length=modulation_length, cross_section=xs_modulator
+    )
+    wg_ref = ps << wg_phase_modulation
+
+    ps.add_port(name="o1", port=wg_ref.ports["o1"])
+    ps.add_port(name="o2", port=wg_ref.ports["o2"])
+
+    # Add the transmission line (CPW)
+    if draw_cpw:
+        xs_cpw = gf.partial(
+            xs_uni_cpw,
+            central_conductor_width=rf_central_conductor_width,
+            ground_planes_width=rf_ground_planes_width,
+            gap=rf_gap,
+        )
+        tl = ps << cpw_cell(
+            length=modulation_length,
+            cross_section=xs_cpw,
+            gap_width=rf_gap,
+            signal_width=rf_central_conductor_width,
+            ground_planes_width=rf_ground_planes_width,
+        )
+
+        gap_eff = rf_gap + 2 * np.sum(
+            [tl.cell.settings[key] for key in ("tt", "th") if key in tl.cell.settings]
+        )
+
+        tl.dmove(
+            tl.ports["e1"].dcenter,
+            (0.0, -0.5 * rf_central_conductor_width - 0.5 * gap_eff),
+        )
+
+        for name, port in [("e1", tl.ports["bp1"]), ("e2", tl.ports["bp2"])]:
+            ps.add_port(name=name, port=port)
+
+    ps.flatten()
+    return ps
+
+
 ## custom mzm function
 @gf.cell
 def _custom_mzm_interferometer(
