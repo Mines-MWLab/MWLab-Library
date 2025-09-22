@@ -12,7 +12,7 @@ import pathlib
 from functools import partial
 import matplotlib.pyplot as plt
 from pathlib import Path
-from lnoi400.cells import uni_cpw_straight, S_bend_vert, eo_phase_shifter_no_taper, L_turn_bend
+from lnoi400.cells import uni_cpw_straight, S_bend_vert, L_turn_bend
 from gdsfactory.routing import route_single_sbend
 from gdsfactory.routing import route_quad
 from lnoi400.spline import (
@@ -132,7 +132,6 @@ def asymmetric_directional_coupler(
 
     [dc.add_port(name=name, port=port) for name, port in exposed_ports]
     return dc
-
 
 
 @gf.cell

@@ -5,7 +5,6 @@ from gdsfactory.typings import CrossSectionSpec, ComponentSpec
 from lnoi400.spline import bend_S_spline_varying_width
 import numpy as np
 from . import components as mpl
-
 from functools import partial
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -475,7 +474,6 @@ def dOR_EOM():
     return c
 
 
-
 #####################
 # Dual Optically Resonant EOM w/edge couplers and GSG landing (draft design)
 #####################
@@ -814,7 +812,6 @@ def EOcomb(
     [c.add_port(name=name, port=port) for name, port in exposed_ports]
     c.flatten()
     return c
-
 
 
 #####################
@@ -1214,6 +1211,7 @@ def racetrack_30GHzFSR():
     c << racetrack()
 
     return c
+
 
 #####################
 # dOR_EOM_DC with EMMI splitters
