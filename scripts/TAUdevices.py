@@ -1,20 +1,35 @@
 # Devices by TAU
 
-#####################################################################################
-# Authors: Ajwaad Quashef, ORC 2025
+import os
+import sys
+from pathlib import Path
 
 import gdsfactory as gf
 import lnoi400
 from gplugins.common.config import PATH
 from gdsfactory.typings import CrossSectionSpec, ComponentSpec
 import numpy as np
-from . import components as orc_components
+
+if __package__:
+    from . import components as orc_components
+else:  # pragma: no cover - convenience for script execution
+    repo_root = Path(__file__).resolve().parents[1]
+    scripts_dir = Path(__file__).resolve().parent
+    for _path in (scripts_dir, repo_root):
+        if str(_path) not in sys.path:
+            sys.path.insert(0, str(_path))
+
+    try:
+        import components as orc_components  # type: ignore
+    except ImportError as _exc:
+        raise ImportError(
+            "Unable to import 'components'. Ensure you run from the repository root or use 'python -m scripts.TAUdevices'."
+        ) from _exc
 
 from functools import partial
 import matplotlib.pyplot as plt
-from pathlib import Path
 from lnoi400.tech import LAYER, xs_uni_cpw
-from lnoi400.cells import uni_cpw_straight, S_bend_vert, eo_phase_shifter_no_taper, L_turn_bend
+from lnoi400.cells import uni_cpw_straight, S_bend_vert, L_turn_bend
 from gdsfactory.routing import route_single_sbend
 from gdsfactory.routing import route_quad
 from lnoi400.spline import (
@@ -22,6 +37,9 @@ from lnoi400.spline import (
     bend_S_spline_varying_width,
     spline_clamped_path,
 )
+
+#####################################################################################
+# Authors: Ajwaad Quashef, ORC 2025
 
 
 #####################################################################################
@@ -215,8 +233,6 @@ def tunable_mzm_laser_Redwan():
     coarse_input_mmi = input_mmi_references['coarse'].ports['o1']
     medium_input_mmi = input_mmi_references['medium'].ports['o1']
     fine_input_mmi = input_mmi_references['fine'].ports['o1']
-
-
 
 
     # 7. Generate the waveguide route
