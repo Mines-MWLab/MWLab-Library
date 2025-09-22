@@ -7,6 +7,7 @@ from lnoi400.tech import LAYER, xs_uni_cpw
 from lnoi400.spline import bend_S_spline_varying_width
 import numpy as np
 from gdsfactory.routing import route_single
+import pathlib
 
 from functools import partial
 import matplotlib.pyplot as plt
@@ -482,7 +483,11 @@ def custom_mmi_AQ(
     """Ybranch/MMI inverse optimized for broadband transmission at 2300 nm."""
 
     c = gf.Component()
-    y_branch_geom = gf.import_gds("S:/61501_Users/Ajwaad/LXT PDK/Layout/y_branch_3D.gds")
+    script_dir = pathlib.Path(__file__).parent.resolve()
+    gds_file_path = script_dir / "utility_files" / "y_branch_3D.gds"
+
+    y_branch_geom = gf.import_gds(gds_file_path)
+    # y_branch_geom = gf.import_gds("S:/61501_Users/Ajwaad/LXT PDK/Layout/y_branch_3D.gds")
     y_branch_ref = c << y_branch_geom
 
     # Add tapered slab layer underneath the MMI
@@ -896,19 +901,6 @@ def linear_inverse_taper_AQ(
 
 #####################################################################################
 # Author: Redwan Islam, ORC 2025
-
-
-## added straight section with 2 µm rwg width
-@gf.cell
-def straight_rwg2000(length: float = 10.0, **kwargs) -> gf.Component:
-    """Straight multimode waveguide."""
-    if "cross_section" not in kwargs:
-        kwargs["cross_section"] = "xs_rwg2000"
-    return _straight(
-        length=length,
-        **kwargs,
-    )
-
 
 ## custom mzm function
 @gf.cell
