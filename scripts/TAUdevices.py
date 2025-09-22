@@ -250,7 +250,7 @@ def tunable_mzm_laser_Redwan():
 
 
     # Create the phase shifter component
-    phase_shifter = pdk.cells.eo_phase_shifter(modulation_length= 2500)
+    phase_shifter = lnoi400.cells.eo_phase_shifter(modulation_length= 2500)
     ps_ref = c.add_ref(phase_shifter)
 
     ps_ref.movey(-500)
