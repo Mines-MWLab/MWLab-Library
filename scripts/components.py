@@ -6,6 +6,7 @@ from gdsfactory.typings import ComponentSpec
 from lnoi400.tech import LAYER, xs_uni_cpw
 from lnoi400.spline import bend_S_spline_varying_width
 import numpy as np
+from gdsfactory.routing import route_single
 
 from functools import partial
 import matplotlib.pyplot as plt
@@ -437,3 +438,447 @@ def trail_cpw_mpl(
     cpw.flatten()
 
     return cpw
+
+
+#####################################################################################
+# Authors: Ajwaad Quashef, ORC 2025
+
+@gf.cell
+def _straight(
+    length: float = 10.0,
+    cross_section: CrossSectionSpec = "xs_rwg2000",
+) -> gf.Component:
+    return gf.components.straight(
+        length=length,
+        cross_section=cross_section,
+    )
+
+@gf.cell
+def straight_rwg2000(length: float = 10.0, **kwargs) -> gf.Component:
+    """Straight single mode (at 2.3 um) waveguide."""
+    if "cross_section" not in kwargs:
+        kwargs["cross_section"] = "xs_rwg2000"
+    return _straight(
+        length=length,
+        **kwargs,
+    )
+
+@gf.cell
+def custom_mmi_AQ(
+    width_mmi: float = 10.0,
+    length_mmi: float = 34.0,
+    width_taper: float = 1.5,
+    length_taper: float = 25.0,
+    port_ratio: float = 1.0,
+    cross_section: CrossSectionSpec = "xs_rwg2000",
+) -> gf.Component:
+    """Ybranch/MMI inverse optimized for broadband transmission at 2300 nm."""
+
+    c = gf.Component()
+    y_branch_geom = gf.import_gds("S:/61501_Users/Ajwaad/LXT PDK/Layout/y_branch_3D.gds")
+    y_branch_ref = c << y_branch_geom
+
+    # Add tapered slab layer underneath the MMI
+    # Get the bounding box of the imported geometry
+    slab_width_start = 18  # Input side width
+    slab_width_end = 28    # Output side width
+    slab_length = y_branch_ref.xmax - y_branch_ref.xmin
+    
+    # Create tapered slab using polygon
+    # Define the four corners of the trapezoid
+    half_width_start = slab_width_start / 2
+    half_width_end = slab_width_end / 2
+    half_length = slab_length / 2
+    
+    # Create trapezoid points: (x, y) coordinates
+    points = [
+        (-half_length, -half_width_start),  # Bottom left
+        (-half_length, half_width_start),   # Top left  
+        (half_length, half_width_end),      # Top right
+        (half_length, -half_width_end),     # Bottom right
+    ]
+    
+    # Add polygon directly to component
+    c.add_polygon(points, layer="LN_SLAB")
+    
+    # Get the center position for moving the entire component if needed
+    slab_center_x = (y_branch_ref.xmin + y_branch_ref.xmax) / 2
+    slab_center_y = (y_branch_ref.ymin + y_branch_ref.ymax) / 2
+    # Note: The polygon is already positioned relative to the component origin
+
+    c.add_port(
+        name="o1",
+        center=(-32, 0),  # (x, y) coordinate of the port center
+        width=2,        # Width of the port in microns
+        orientation=180,  # 180 degrees points West (left)
+        layer="LN_RIDGE"
+    )
+
+    c.add_port(
+        name="o2",
+        center=(32, 5),
+        width=2,
+        orientation=0,    # 0 degrees points East (right)
+        layer="LN_RIDGE"
+    )
+
+    c.add_port(
+        name="o3",
+        center=(32, -5),
+        width=2,
+        orientation=0,
+        layer="LN_RIDGE"
+    )
+
+    return c
+
+
+def loop_mirror_AQ(
+    splitter: ComponentSpec = "custom_mmi_AQ",
+    cross_section: CrossSectionSpec = "rwg2000",
+) -> gf.Component:
+    """Returns Sagnac loop_mirror.    """
+    c = gf.Component()
+    # splitter = gf.get_component(splitter)
+    splitter = custom_mmi_AQ()
+    cref = c.add_ref(splitter)
+    sref1 = c << gf.components.bend_s_offset(offset=100.0, radius=100.0, cross_section=cross_section)
+    sref2 = c << gf.components.bend_s_offset(offset=100.0, radius=100.0, cross_section=cross_section)
+    sref2.dmirror_y()
+    sref1.connect("o1", cref.ports["o2"])
+    sref2.connect("o1", cref.ports["o3"])
+
+    route_single(
+        c,
+        sref1.ports["o2"],
+        sref2.ports["o2"],
+        straight=gf.components.straight(cross_section=cross_section),
+        bend=gf.components.bend_euler(radius=100.0, p=1, cross_section=cross_section), radius=100.0,
+        cross_section=cross_section,
+    )
+
+    c.add_port(name="o1", port=cref.ports["o1"])
+    return c
+
+
+@gf.cell
+def eo_phase_modulator_AQ(
+    modulation_length: float = 4500.0,
+    cross_section: CrossSectionSpec = "xs_rwg2000",
+    # RF parameters for CPW line
+    rf_central_conductor_width: float = 10.0,
+    rf_ground_planes_width: float = 180.0,
+    rf_gap: float = 4.0,
+    cpw_cell: ComponentSpec = lnoi400.cells.uni_cpw_straight,
+    draw_cpw: bool = True,
+) -> gf.Component:
+    """
+    Phase modulator with a constant rib waveguide width (no tapers), intended
+    for the custom_mzm. The waveguide is located within the gap of a CPW
+    transmission line.
+    """
+    ps = gf.Component()
+    xs_modulator = gf.get_cross_section(cross_section)
+
+    # The phase modulation section is a simple straight waveguide
+    wg_phase_modulation = gf.components.straight(
+        length=modulation_length, cross_section=xs_modulator
+    )
+    wg_ref = ps << wg_phase_modulation
+
+    ps.add_port(name="o1", port=wg_ref.ports["o1"])
+    ps.add_port(name="o2", port=wg_ref.ports["o2"])
+
+    # Add the transmission line (CPW)
+    if draw_cpw:
+        xs_cpw = gf.partial(
+            xs_uni_cpw,
+            central_conductor_width=rf_central_conductor_width,
+            ground_planes_width=rf_ground_planes_width,
+            gap=rf_gap,
+        )
+        tl = ps << cpw_cell(
+            length=modulation_length,
+            cross_section=xs_cpw,
+            gap_width=rf_gap,
+            signal_width=rf_central_conductor_width,
+            ground_planes_width=rf_ground_planes_width,
+        )
+
+        gap_eff = rf_gap + 2 * np.sum(
+            [tl.cell.settings[key] for key in ("tt", "th") if key in tl.cell.settings]
+        )
+
+        tl.dmove(
+            tl.ports["e1"].dcenter,
+            (0.0, -0.5 * rf_central_conductor_width - 0.5 * gap_eff),
+        )
+
+        for name, port in [("e1", tl.ports["bp1"]), ("e2", tl.ports["bp2"])]:
+            ps.add_port(name=name, port=port)
+
+    ps.flatten()
+    return ps
+
+
+@gf.cell
+def _mzm_interferometer_AQ(
+    splitter: ComponentSpec = "custom_mmi_AQ",
+    modulation_length: float = 4500.0,
+    sbend_large_size: tuple[float, float] = (100.0, 50.0),
+    sbend_small_size: tuple[float, float] = (100.0, -45.0),
+    sbend_small_straight_extend: float = 5.0,
+) -> gf.Component:
+    interferometer = gf.Component()
+
+    sbend_large = lnoi400.cells.S_bend_vert(
+        v_offset=sbend_large_size[1], h_extent=sbend_large_size[0], dx_straight=5.0,
+        cross_section="xs_rwg2000",
+    )
+
+    sbend_small = lnoi400.cells.S_bend_vert(
+        v_offset=sbend_small_size[1],
+        h_extent=sbend_small_size[0],
+        dx_straight=sbend_small_straight_extend,
+        cross_section="xs_rwg2000",
+    )
+
+    def branch_top():
+        bt = gf.Component()
+        sbend_1 = bt << sbend_large
+        sbend_2 = bt << sbend_small
+        pm = bt << eo_phase_modulator_AQ(
+            modulation_length=modulation_length,
+            draw_cpw=False,
+        )
+        sbend_3 = bt << sbend_small
+        sbend_4 = bt << sbend_large  # Create separate mirrored large S-bend for return
+        
+        # Mirror the return path S-bends
+        sbend_3.dmirror_x()  # Mirror the small S-bend
+        sbend_4.dmirror_x()  # Mirror the large S-bend for return path
+        
+        # Connect components in sequence
+        sbend_2.connect("o1", sbend_1.ports["o2"])
+        pm.connect("o1", sbend_2.ports["o2"])
+        sbend_3.connect("o1", pm.ports["o2"])
+        sbend_4.connect("o1", sbend_3.ports["o2"])
+        sbend_3.connect("o1", pm.ports["o2"])
+
+        for name, port in [
+            ("o1", sbend_1.ports["o1"]),
+            ("o2", sbend_4.ports["o2"]),  # Output from sbend_4
+            ("taper_start", pm.ports["o1"]),
+        ]:
+            bt.add_port(name=name, port=port)
+        bt.flatten()
+
+        return bt
+
+    splt = custom_mmi_AQ()
+
+    # Uniformly handle the cases of a 1x2 or 2x2 MMI
+    if len(splt.ports) == 4:
+        out_top = splt.ports["o3"]
+        out_bottom = splt.ports["o4"]
+        combiner_in_top = splt.ports["o3"]
+        combiner_in_bottom = splt.ports["o4"]
+    elif len(splt.ports) == 3:
+        out_top = splt.ports["o2"]
+        out_bottom = splt.ports["o3"]
+        combiner_in_top = splt.ports["o2"]
+        combiner_in_bottom = splt.ports["o3"]
+    else:
+        raise ValueError(f"Splitter cell not supported.")
+
+    # Place components
+    splt_ref = interferometer << splt  # Input splitter
+    combiner_ref = interferometer << splt  # Output combiner (same component)
+    bt = interferometer << branch_top()
+    bb = interferometer << branch_top()
+    
+    # Mirror bottom branch
+    bb.dmirror_y()
+    
+    # Connect splitter to phase modulators
+    bt.connect("o1", out_top)
+    bb.connect("o1", out_bottom)
+    
+    # Mirror combiner to reverse direction
+    combiner_ref.dmirror_x()
+    
+    # Connect branches directly to combiner (no intermediate routing needed)
+    # For a mirrored 1x2 MMI, the input ports become o2 and o3
+    if len(splt.ports) == 3:
+        # For 1x2 MMI: connect branch outputs directly to combiner input ports
+        combiner_ref.connect("o2", bt.ports["o2"])
+        combiner_ref.connect("o3", bb.ports["o2"])
+    elif len(splt.ports) == 4:
+        # For 2x2 MMI: connect branch outputs directly to combiner input ports
+        combiner_ref.connect("o3", bt.ports["o2"])
+        combiner_ref.connect("o4", bb.ports["o2"])
+
+    # Expose the ports
+    exposed_ports = [
+        ("o1", splt_ref.ports["o1"]),  # Input
+        ("upper_taper_start", bt.ports["taper_start"]),
+        ("o2", combiner_ref.ports["o1"]),  # Combined output
+    ]
+
+    for name, port in exposed_ports:
+        interferometer.add_port(name=name, port=port)
+    interferometer.flatten()
+
+    return interferometer
+
+
+@gf.cell
+def mzm_custom_AQ(
+    modulation_length: float = 4500.0,
+    rf_pad_start_width: float = 80.0,
+    rf_central_conductor_width: float = 10.0,
+    rf_ground_planes_width: float = 180.0,
+    rf_gap: float = 4.0,
+    rf_pad_length_straight: float = 10.0,
+    rf_pad_length_tapered: float = 190.0,
+    cpw_cell: ComponentSpec = lnoi400.cells.uni_cpw_straight,
+    **kwargs,
+) -> gf.Component:
+    """Balanced Mach-Zehnder modulator based on the Pockels effect with an applied RF field.
+    The modulator works in a differential push-pull configuration driven by a single GSG line.
+    Simplified version without bias tuning sections."""
+
+    mzm = gf.Component()
+
+    # Transmission line subcell
+    xs_cpw = gf.partial(
+        xs_uni_cpw,
+        central_conductor_width=rf_central_conductor_width,
+        ground_planes_width=rf_ground_planes_width,
+        gap=rf_gap,
+    )
+
+    rf_line = mzm << cpw_cell(
+        bondpad={
+            "component": "CPW_pad_linear",
+            "settings": {
+                "start_width": rf_pad_start_width,
+                "length_straight": rf_pad_length_straight,
+                "length_tapered": rf_pad_length_tapered,
+            },
+        },
+        length=modulation_length,
+        signal_width=rf_central_conductor_width,
+        cross_section=xs_cpw,
+        ground_planes_width=rf_ground_planes_width,
+        gap_width=rf_gap,
+    )
+
+    rf_line.dmove(rf_line.ports["e1"].dcenter, (0.0, 0.0))
+
+    # Interferometer subcell
+    splitter = custom_mmi_AQ()
+
+    sbend_large_AR = 3.6
+
+    gap_eff = rf_gap + 2 * np.sum(
+        [
+            rf_line.cell.settings[key]
+            for key in ("tt", "th")
+            if key in rf_line.cell.settings
+        ]
+    )
+
+    GS_separation = rf_pad_start_width * gap_eff / rf_central_conductor_width
+
+    sbend_large_v_offset = (
+        0.5 * rf_pad_start_width
+        + 0.5 * GS_separation
+        - 0.5 * splitter.settings["port_ratio"] * splitter.settings["width_mmi"]
+    )
+
+    sbend_small_straight_length = rf_pad_length_straight * 0.5
+
+    interferometer = (
+        mzm
+        << partial(
+            _mzm_interferometer_AQ,
+            modulation_length=modulation_length,
+            sbend_large_size=(
+                sbend_large_AR * sbend_large_v_offset,
+                sbend_large_v_offset,
+            ),
+            sbend_small_size=(
+                rf_pad_length_straight
+                + rf_pad_length_tapered
+                - 2 * sbend_small_straight_length,
+                -0.5
+                * (
+                    rf_pad_start_width
+                    - rf_central_conductor_width
+                    + GS_separation
+                    - gap_eff
+                ),
+            ),
+            sbend_small_straight_extend=sbend_small_straight_length,
+            **kwargs,
+        )()
+    )
+
+    interferometer.dmove(
+        interferometer.ports["upper_taper_start"].dcenter,
+        (0.0, 0.5 * (rf_central_conductor_width + gap_eff)),
+    )
+
+    # Expose the ports - now with combiner
+    exposed_ports = [
+        ("e1", rf_line.ports["bp1"]),
+        ("e2", rf_line.ports["bp2"]),
+        ("o1", interferometer.ports["o1"]),  # Input
+        ("o2", interferometer.ports["o2"]),  # Combined output
+    ]
+
+    [mzm.add_port(name=name, port=port) for name, port in exposed_ports]
+
+    return mzm
+
+
+@gf.cell
+def linear_inverse_taper_AQ(
+    cross_section_start: CrossSectionSpec = "xs_rwg750",
+    cross_section_end: CrossSectionSpec = "xs_rwg2000",
+    taper_length: float = 20.0,
+    input_ext: float = 0.0,
+) -> gf.Component:
+    """Inverse rib width taper for edge coupler"""
+
+    taper = gf.components.taper_cross_section(
+        cross_section1=cross_section_start,
+        cross_section2=cross_section_end,
+        length=taper_length,
+        linear=True,
+    )
+
+    if input_ext:
+        straight_ext = gf.components.straight(
+            cross_section=cross_section_start,
+            length=input_ext,
+        )
+
+    inverse_taper = gf.Component()
+    if input_ext:
+        sref = inverse_taper << straight_ext
+        sref.dmovex(-input_ext)
+    itref = inverse_taper << taper
+
+    # Define the input and output optical ports
+    inverse_taper.add_port(
+        port=sref.ports["o1"]
+    ) if input_ext else inverse_taper.add_port(port=itref.ports["o1"])
+    inverse_taper.add_port(port=itref.ports["o2"])
+
+    inverse_taper.flatten()
+
+    return inverse_taper
+
+##################################################################################### End: AQ
