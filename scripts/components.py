@@ -11,6 +11,14 @@ from gdsfactory.routing import route_single
 from functools import partial
 import matplotlib.pyplot as plt
 from pathlib import Path
+from lnoi400.cells import uni_cpw_straight, S_bend_vert, eo_phase_shifter_no_taper, L_turn_bend
+from gdsfactory.routing import route_single_sbend
+from gdsfactory.routing import route_quad
+from lnoi400.spline import (
+    bend_S_spline,
+    bend_S_spline_varying_width,
+    spline_clamped_path,
+)
 
 #####################
 # Asymmetric directional coupler
@@ -882,3 +890,328 @@ def linear_inverse_taper_AQ(
     return inverse_taper
 
 ##################################################################################### End: AQ
+
+
+
+
+
+#####################################################################################
+# Author: Redwan Islam, ORC 2025
+
+
+## added straight section with 2 µm rwg width
+@gf.cell
+def straight_rwg2000(length: float = 10.0, **kwargs) -> gf.Component:
+    """Straight multimode waveguide."""
+    if "cross_section" not in kwargs:
+        kwargs["cross_section"] = "xs_rwg2000"
+    return _straight(
+        length=length,
+        **kwargs,
+    )
+
+
+## custom mzm function
+@gf.cell
+def _custom_mzm_interferometer(
+    modulation_length: float = 7500.0,
+    length_imbalance: float = 100.0,
+    bias_tuning_section_length: float = 750.0,
+    sbend_large_size: tuple[float, float] = (200.0, 50.0),
+    sbend_small_size: tuple[float, float] = (200.0, -45.0),
+    sbend_small_straight_extend: float = 5.0,
+    lbend_tune_arm_reff: float = 75.0,
+    lbend_combiner_reff: float = 80.0,
+) -> gf.Component:
+    """
+    Custom MZM interferometer core with constant 2um rib width, without MMI
+    splitter/combiner.
+    """
+    interferometer = gf.Component()
+    xs_custom = "xs_rwg2000"
+
+    # Get MMI component info for positioning, but do not place the component
+    splitter_combiner_cell = custom_mmi()
+    port_separation_y = abs(
+        splitter_combiner_cell.ports["o3"].dy - splitter_combiner_cell.ports["o2"].dy
+    )
+
+    # --- Sub-component Definitions ---
+    sbend_large = S_bend_vert(
+        v_offset=sbend_large_size[1],
+        h_extent=sbend_large_size[0],
+        dx_straight=5.0,
+        cross_section=xs_custom,
+    )
+    sbend_small = S_bend_vert(
+        v_offset=sbend_small_size[1],
+        h_extent=sbend_small_size[0],
+        dx_straight=sbend_small_straight_extend,
+        cross_section=xs_custom,
+    )
+
+    def branch_top():
+        bt = gf.Component()
+        sbend_1 = bt << sbend_large
+        sbend_2 = bt << sbend_small
+        pm = bt << eo_phase_shifter_no_taper(
+            modulation_length=modulation_length, draw_cpw=False, cross_section=xs_custom
+        )
+        sbend_3 = bt << sbend_small
+        sbend_2.connect("o1", sbend_1.ports["o2"])
+        pm.connect("o1", sbend_2.ports["o2"])
+        sbend_3.dmirror_x()
+        sbend_3.connect("o1", pm.ports["o2"])
+        bt.add_port(name="o1", port=sbend_1.ports["o1"])
+        bt.add_port(name="o2", port=sbend_3.ports["o2"])
+        bt.add_port(name="phase_shifter_start", port=pm.ports["o1"])
+        bt.flatten()
+        return bt
+
+    def branch_tune_short(straight_unbalance: float = 0.0):
+        lbend = L_turn_bend(radius=lbend_tune_arm_reff, cross_section=xs_custom)
+        straight_y = gf.components.straight(
+            length=20.0 + straight_unbalance, cross_section=xs_custom
+        )
+        straight_x = gf.components.straight(
+            length=bias_tuning_section_length, cross_section=xs_custom
+        )
+        symbol_to_component = {
+            "b": (lbend, "o1", "o2"),
+            "L": (straight_y, "o1", "o2"),
+            "B": (lbend, "o2", "o1"),
+            "_": (straight_x, "o1", "o2"),
+        }
+        sequence = "bLB_!b!L"
+        arm = gf.components.component_sequence(
+            sequence=sequence,
+            ports_map={"phase_tuning_segment_start": ("_1", "o1")},
+            symbol_to_component=symbol_to_component,
+        )
+        arm.add_port(port=arm.ports["phase_tuning_segment_start"])
+        arm.flatten()
+        return arm
+
+    def branch_tune_long(straight_unbalance):
+        return partial(branch_tune_short, straight_unbalance=straight_unbalance)()
+
+    # --- Component Placement (MMIs are NOT placed) ---
+    bt = interferometer << branch_top()
+    bb = interferometer << branch_top()
+    bs = interferometer << branch_tune_short()
+    bl = interferometer << branch_tune_long(abs(0.5 * length_imbalance))
+    lbend_c = L_turn_bend(radius=lbend_combiner_reff, cross_section=xs_custom)
+    lbend_top = interferometer << lbend_c
+    lbend_bottom = interferometer << lbend_c
+
+    # --- Routing and Connections ---
+    # 1. Manually place the arms where the splitter would have put them
+    bb.dmirror_y()
+    bt.dmove(origin=bt.ports["o1"].dcenter, destination=(0, port_separation_y / 2))
+    bb.dmove(origin=bb.ports["o1"].dcenter, destination=(0, -port_separation_y / 2))
+
+    # 2. Modulator arms to bias tuning arms
+    if length_imbalance >= 0:
+        bl.connect("o1", bt.ports["o2"])
+        bs.dmirror_y()
+        bs.connect("o1", bb.ports["o2"])
+    else:
+        bs.connect("o1", bt.ports["o2"])
+        bl.dmirror_y()
+        bl.connect("o1", bb.ports["o2"])
+
+    # 3. Bias tuning arms to final L-bends
+    lbend_bottom.dmirror_y()
+    if length_imbalance >= 0:
+        lbend_top.connect("o1", bl.ports["o2"])
+        lbend_bottom.connect("o1", bs.ports["o2"])
+    else:
+        lbend_top.connect("o1", bs.ports["o2"])
+        lbend_bottom.connect("o1", bl.ports["o2"])
+
+    # --- Port Exposure ---
+    exposed_ports = [
+        ("in_top", bt.ports["o1"]),
+        ("in_bot", bb.ports["o1"]),
+        ("out_top", lbend_top.ports["o2"]),
+        ("out_bot", lbend_bottom.ports["o2"]),
+        ("upper_phase_shifter_start", bt.ports["phase_shifter_start"]),
+        ("short_bias_branch_start", bs.ports["phase_tuning_segment_start"]),
+        ("long_bias_branch_start", bl.ports["phase_tuning_segment_start"]),
+    ]
+    for name, port in exposed_ports:
+        interferometer.add_port(name=name, port=port)
+    interferometer.flatten()
+    return interferometer
+
+
+@gf.cell
+def custom_mzm(
+    modulation_length: float = 7500.0,
+    length_imbalance: float = 100.0,
+    lbend_tune_arm_reff: float = 75.0,
+    rf_pad_start_width: float = 80.0,
+    rf_central_conductor_width: float = 10.0,
+    rf_ground_planes_width: float = 180.0,
+    rf_gap: float = 4.0,
+    rf_pad_length_straight: float = 10.0,
+    rf_pad_length_tapered: float = 300.0,
+    bias_tuning_section_length: float = 700.0,
+    cpw_cell: ComponentSpec = uni_cpw_straight,
+    with_heater: bool = False,
+    heater_offset: float = 1.2,
+    heater_width: float = 1.0,
+    heater_pad_size: tuple[float, float] = (75.0, 75.0),
+) -> gf.Component:
+    """
+    Custom Mach-Zehnder modulator with constant 2um rib width and no tapers.
+    The MMI splitter/combiner are removed and the optical ports are exposed.
+    """
+    mzm = gf.Component()
+
+    # --- RF Transmission Line Subcell ---
+    xs_cpw = gf.partial(
+        xs_uni_cpw,
+        central_conductor_width=rf_central_conductor_width,
+        ground_planes_width=rf_ground_planes_width,
+        gap=rf_gap,
+    )
+    rf_line = mzm << cpw_cell(
+        bondpad={
+            "component": "CPW_pad_linear",
+            "settings": {
+                "start_width": rf_pad_start_width,
+                "length_straight": rf_pad_length_straight,
+                "length_tapered": rf_pad_length_tapered,
+            },
+        },
+        length=modulation_length,
+        signal_width=rf_central_conductor_width,
+        cross_section=xs_cpw,
+        ground_planes_width=rf_ground_planes_width,
+        gap_width=rf_gap,
+    )
+    rf_line.dmove(rf_line.ports["e1"].dcenter, (0.0, 0.0))
+
+    # --- Interferometer Subcell ---
+    splitter = custom_mmi()
+    sbend_large_AR = 6
+    gap_eff = rf_gap + 2 * np.sum(
+        [
+            rf_line.cell.settings[key]
+            for key in ("tt", "th")
+            if key in rf_line.cell.settings
+        ]
+    )
+    GS_separation = rf_pad_start_width * gap_eff / rf_central_conductor_width
+    sbend_large_v_offset = (
+        0.5 * rf_pad_start_width
+        + 0.5 * GS_separation
+        - 0.5 * splitter.settings["port_ratio"] * splitter.settings["width_mmi"]
+    )
+    sbend_small_straight_length = rf_pad_length_straight * 0.5
+    lbend_combiner_reff = (
+        0.5 * rf_pad_start_width
+        + lbend_tune_arm_reff
+        + 0.5 * GS_separation
+        - 0.5 * splitter.settings["port_ratio"] * splitter.settings["width_mmi"]
+    )
+
+    interferometer = mzm << _custom_mzm_interferometer(
+        modulation_length=modulation_length,
+        length_imbalance=length_imbalance,
+        sbend_large_size=(
+            sbend_large_AR * sbend_large_v_offset,
+            sbend_large_v_offset,
+        ),
+        sbend_small_size=(
+            rf_pad_length_straight
+            + rf_pad_length_tapered
+            - 2 * sbend_small_straight_length,
+            -0.5
+            * (
+                rf_pad_start_width
+                - rf_central_conductor_width
+                + GS_separation
+                - gap_eff
+            ),
+        ),
+        sbend_small_straight_extend=sbend_small_straight_length,
+        lbend_tune_arm_reff=lbend_tune_arm_reff,
+        lbend_combiner_reff=lbend_combiner_reff,
+        bias_tuning_section_length=bias_tuning_section_length,
+    )
+
+    interferometer.dmove(
+        interferometer.ports["upper_phase_shifter_start"].dcenter,
+        (0.0, 0.5 * (rf_central_conductor_width + gap_eff)),
+    )
+
+    # --- Heater for Phase Tuning (Optional) ---
+    if with_heater:
+        ht_ref = mzm << heater_straight_single(
+            length=bias_tuning_section_length,
+            width=heater_width,
+            offset=heater_offset,
+            pad_size=heater_pad_size,
+        )
+        if length_imbalance < 0.0:
+            heater_disp = [0, 0.5 * heater_width + heater_offset]
+        else:
+            ht_ref.dmirror_y()
+            heater_disp = [0, -0.5 * heater_width - heater_offset]
+        ht_ref.dmove(
+            origin=ht_ref.ports["ht_start"].dcenter,
+            destination=(
+                np.array(interferometer.ports["long_bias_branch_start"].dcenter)
+                + heater_disp
+            ),
+        )
+
+    # --- Port Exposure ---
+    exposed_ports = [
+        ("e1", rf_line.ports["bp1"]),
+        ("e2", rf_line.ports["bp2"]),
+        ("in_top", interferometer.ports["in_top"]),
+        ("in_bot", interferometer.ports["in_bot"]),
+        ("out_top", interferometer.ports["out_top"]),
+        ("out_bot", interferometer.ports["out_bot"]),
+    ]
+    if with_heater:
+        exposed_ports += [
+            ("e3", ht_ref.ports["e1"]),
+            ("e4", ht_ref.ports["e2"]),
+        ]
+    [mzm.add_port(name=name, port=port) for name, port in exposed_ports]
+
+    return mzm
+
+
+##custom mmi
+@gf.cell
+def custom_mmi(
+    width_mmi: float = 15,
+    length_mmi: float = 60,
+    width_taper: float = 1.5,
+    length_taper: float = 25.0,
+    port_ratio: float = 0.55,
+    cross_section: CrossSectionSpec = "xs_rwg2000",
+    **kwargs,
+) -> gf.Component:
+    """MMI1x2 with layout optimized for maximum transmission at 1550 nm."""
+
+    gap_mmi = (
+        port_ratio * width_mmi - width_taper
+    )  # The port ratio is defined as the ratio between the waveguides separation and the MMI width.
+
+    return gf.components.mmi1x2(
+        width_mmi=width_mmi,
+        length_mmi=length_mmi,
+        gap_mmi=gap_mmi,
+        length_taper=length_taper,
+        width_taper=width_taper,
+        cross_section=cross_section,
+        **kwargs,
+    )
+
+##################################################################################### End: Redwan Islam
