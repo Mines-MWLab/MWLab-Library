@@ -16,7 +16,7 @@ from pathlib import Path
 @gf.cell
 def OPA_straight_waveguide(
     length: float = 100.0,  # length in microns
-    cross_section: CrossSectionSpec = "xs_rwg1000"
+    cross_section: CrossSectionSpec = "xs_rwg3000"
 ) -> gf.Component:
     """Simple straight waveguide from left to right for an OPA."""
     c = gf.Component()

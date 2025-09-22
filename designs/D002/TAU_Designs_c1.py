@@ -1,3 +1,4 @@
+
 from functools import partial
 from pathlib import Path
 import numpy as np
@@ -28,105 +29,154 @@ chip_layout = chip_frame()
 input_ext = 10
 double_taper = gf.get_component("double_linear_inverse_taper", input_ext=input_ext)
 routing_roc = 50.0
-frame = 50
 
-# minimum required vertical spacing (includes distance to top/bottom facets)
-MIN_SPACING = 490.0  # um
+COUPLER_CROSS_SECTION = "xs_rwg1000"
+TAPER_LENGTH = 50.0
 
-# create straight OPA waveguide (single waveguide component)
-OPA_straight_waveguide = devices.OPA_straight_waveguide(length=400.0)
+# --- Constraints from your spec ---
+MIN_SPACING_SAME = 490.0   # µm, between waveguides of the same width
+EDGE_MARGIN      = 350.0   # µm, clearance to top and bottom chip edges
+
+# For now: use 3 µm cross-section everywhere 
+CROSS_SECTIONS = ["xs_rwg3000", "xs_rwg3000", "xs_rwg2500"]
+STRAIGHT_NAMES = ["straight_rwg3000", "straight_rwg3000", "straight_rwg2500"]
+
+# Base straight length
+OPA_LENGTH = 400.0
+
+# Pre-build a straight OPA for each set (one per cross-section)
+OPA_STRAIGHTS = [
+    devices.OPA_straight_waveguide(length=OPA_LENGTH, cross_section=cs)
+    for cs in CROSS_SECTIONS
+]
+
+TRANSITION_TAPERS = [
+    gf.components.taper_cross_section(
+        cross_section1=COUPLER_CROSS_SECTION,
+        cross_section2=cs,
+        length=TAPER_LENGTH,
+        linear=True,
+    )
+    for cs in CROSS_SECTIONS
+]
 
 @gf.cell
-def die_assembled(n_wg: int | None = None, pitch: float = MIN_SPACING) -> gf.Component:
+def die_assembled_grouped(
+    min_spacing_same: float = MIN_SPACING_SAME,  # 490 µm for same cross-section
+    edge_margin: float = EDGE_MARGIN,            # 350 µm top/bottom margins
+    spacing_diff: float = 150.0,                  # 20 µm between different cross-sections
+) -> gf.Component:
     """
-    Place a stack of horizontal straight waveguides centered horizontally on the chip,
-    separated vertically by pitch. The pitch must be >= MIN_SPACING.
-    If n_wg is None the function will place the maximum number that fits,
-    respecting MIN_SPACING between waveguides and between outer waveguides and chip edges.
+    Build a die with interleaved rows of three cross-sections (0->1->2->repeat).
+    Enforce: >= spacing_diff between adjacent (different) rows and
+             >= min_spacing_same between rows of the same cross-section.
+    Keep edge_margin at top and bottom.
     """
-    if pitch < MIN_SPACING:
-        raise ValueError(f"pitch must be >= MIN_SPACING ({MIN_SPACING} µm). Got {pitch}.")
-
     c = gf.Component()
     c << chip_layout
 
-    # chip usable vertical span H (from bottom facet y=0 to top facet y=dymax)
-    H = chip_layout.dymax
+    H_total = chip_layout.dymax
+    W_total = chip_layout.dxmax
 
-    # Formula: must have outer margins >= pitch, and spacing between centers = pitch.
-    # Total required height for n waveguides = (n - 1) * pitch + 2 * pitch = (n + 1) * pitch
-    # So (n + 1) * pitch <= H  => n <= H / pitch - 1
-    max_n = int(np.floor(H / pitch - 1))
-    if max_n < 1:
-        raise RuntimeError(f"Chip height {H} µm is too small for required pitch {pitch} µm.")
+    # Usable vertical range after top/bottom edge margins
+    y_min = edge_margin
+    y_max = H_total - edge_margin
+    if y_max <= y_min:
+        raise RuntimeError("Edge margins exceed chip height.")
 
-    if n_wg is None:
-        n = max_n
-    else:
-        n = int(n_wg)
-        if n > max_n:
-            print(f"Requested n_wg={n_wg} exceeds maximum {max_n} for pitch {pitch} -> capping to {max_n}.")
-            n = max_n
-
-    # compute Y positions for centers: start at y = pitch, last at y = H - pitch, step = pitch
-    y_positions = [pitch + i * pitch for i in range(n)]
-
-    # center horizontally: compute desired x for left edge placement
-    x_center = chip_layout.dxmax / 2.0
-
+    # Routing bend factory (unchanged)
     routing_bend = partial(
         gf.components.bend_euler,
         radius=routing_roc,
         with_arc_floorplan=True,
     )
 
-    for i in range(n):
-        # reference to straight waveguide
-        opa_ref = c << OPA_straight_waveguide
+    # Helper: interleave types [0,1,2,0,1,2,...] while meeting spacing constraints.
+    # Greedy: for the next type, place the smallest y that satisfies both:
+    #   (1) y >= prev_y + spacing_diff  (adjacent rows)
+    #   (2) y >= last_y_for_this_type + min_spacing_same  (same-type separation)
+    def pack_interleaved(y0: float, y1: float) -> list[tuple[float, int]]:
+        last_for_type = {0: None, 1: None, 2: None}
+        seq = []
+        prev_y = None
+        t = 0  # start with type 0 -> 1 -> 2 -> repeat
 
-        # vertical offset relative to chip center
-        dy = (i - (n - 1) / 2) * pitch
-        opa_ref.dmovex(chip_layout.dxmax / 2 - opa_ref.xsize / 2)
-        opa_ref.dmovey(chip_layout.dymax / 2 + dy)
+        while True:
+            needs = [y0]
+            if prev_y is not None:
+                needs.append(prev_y + spacing_diff)
+            if last_for_type[t] is not None:
+                needs.append(last_for_type[t] + min_spacing_same)
+            y = max(needs)
 
-        # input taper on the left facet
+            if y > y1:
+                break
+
+            seq.append((y, t))
+            last_for_type[t] = y
+            prev_y = y
+            t = (t + 1) % 3  # cycle 0->1->2
+
+        return seq
+
+    # Generate (y, type_idx) placements across full usable height
+    placements = pack_interleaved(y_min, y_max)
+
+    # Place rows
+    for y_center, set_idx in placements:
+        # select set-specific parts
+        opa_straight = OPA_STRAIGHTS[set_idx]
+        transition_taper = TRANSITION_TAPERS[set_idx]
+        xs_name = CROSS_SECTIONS[set_idx]
+        straight_name = STRAIGHT_NAMES[set_idx]
+
+        # straight
+        opa_ref = c << opa_straight
+        opa_ref.dmovex(W_total / 2.0 - opa_ref.xsize / 2.0)
+        opa_ref.dmovey(y_center - opa_ref.ysize / 2.0)
+
+        # input coupler + transition taper
         ec_in = c << double_taper
         ec_in.dmove(
             ec_in.ports["o1"].dcenter,
             [-input_ext, opa_ref.ports["o1"].center[1]],
         )
+        taper_in = c << transition_taper
+        taper_in.connect("o1", ec_in.ports["o2"])
 
-        # output taper on the right facet
+        # output coupler + transition taper
         ec_out = c << double_taper
         ec_out.drotate(180)
         ec_out.dmove(
             ec_out.ports["o1"].dcenter,
-            [input_ext + chip_layout.dxmax, opa_ref.ports["o2"].center[1]],
+            [input_ext + W_total, opa_ref.ports["o2"].center[1]],
         )
+        taper_out = c << transition_taper
+        taper_out.drotate(180)
+        taper_out.connect("o1", ec_out.ports["o2"])
 
-        # routing (straight + bends)
+        # routes (use the per-set cross-section + straight)
         gf.routing.route_single(
             c,
-            ec_in.ports["o2"],
+            taper_in.ports["o2"],
             opa_ref.ports["o1"],
-            cross_section="xs_rwg1000",
+            cross_section=xs_name,
             bend=routing_bend,
-            straight="straight_rwg1000",
+            straight=straight_name,
         )
-
         gf.routing.route_single(
             c,
-            ec_out.ports["o2"],
+            taper_out.ports["o2"],
             opa_ref.ports["o2"],
-            cross_section="xs_rwg1000",
+            cross_section=xs_name,
             bend=routing_bend,
-            straight="straight_rwg1000",
+            straight=straight_name,
         )
 
     return c
 
-# build and show die (auto-picks max number that fits)
-die = die_assembled(n_wg=None, pitch=MIN_SPACING)
+# --- Build and show die -------------------------------------------------------
+die = die_assembled_grouped()
 die.plot()
 die.show()
 # _ = die.write_gds(gdsdir=Path.cwd())
