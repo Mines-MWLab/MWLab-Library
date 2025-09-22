@@ -4,11 +4,35 @@ from gplugins.common.config import PATH
 from gdsfactory.typings import CrossSectionSpec, ComponentSpec
 from lnoi400.spline import bend_S_spline_varying_width
 import numpy as np
-import components as mpl
+from . import components as mpl
 
 from functools import partial
 import matplotlib.pyplot as plt
 from pathlib import Path
+
+
+#####################
+# OPA
+#####################
+@gf.cell
+def OPA_straight_waveguide(
+    length: float = 100.0,  # length in microns
+    cross_section: CrossSectionSpec = "xs_rwg1000"
+) -> gf.Component:
+    """Simple straight waveguide from left to right for an OPA."""
+    c = gf.Component()
+
+    # create straight waveguide
+    wg = gf.components.straight(length=length, cross_section=cross_section)
+
+    # add to component
+    wg_ref = c << wg
+
+    # expose ports
+    c.add_port(name="o1", port=wg_ref.ports["o1"])
+    c.add_port(name="o2", port=wg_ref.ports["o2"])
+
+    return c
 
 #####################
 # Traveling Wave EOM (final design)
