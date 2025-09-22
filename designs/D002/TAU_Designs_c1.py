@@ -25,7 +25,7 @@ def chip_frame():
 chip_layout = chip_frame()
 
 # global parameters
-input_ext = 10.0
+input_ext = 10
 double_taper = gf.get_component("double_linear_inverse_taper", input_ext=input_ext)
 routing_roc = 50.0
 frame = 50
@@ -93,7 +93,7 @@ def die_assembled(n_wg: int | None = None, pitch: float = MIN_SPACING) -> gf.Com
         ec_in = c << double_taper
         ec_in.dmove(
             ec_in.ports["o1"].dcenter,
-            [opa_ref.xmin - input_ext - chip_layout.dxmax / 2, opa_ref.ports["o1"].center[1]],
+            [-input_ext, opa_ref.ports["o1"].center[1]],
         )
 
         # output taper on the right facet
@@ -101,7 +101,7 @@ def die_assembled(n_wg: int | None = None, pitch: float = MIN_SPACING) -> gf.Com
         ec_out.drotate(180)
         ec_out.dmove(
             ec_out.ports["o1"].dcenter,
-            [opa_ref.xmax + input_ext + chip_layout.dxmax / 2, opa_ref.ports["o2"].center[1]],
+            [input_ext + chip_layout.dxmax, opa_ref.ports["o2"].center[1]],
         )
 
         # routing (straight + bends)
@@ -122,8 +122,6 @@ def die_assembled(n_wg: int | None = None, pitch: float = MIN_SPACING) -> gf.Com
             bend=routing_bend,
             straight="straight_rwg1000",
         )
-
-    print(f"Placed {n} waveguides with pitch {pitch} µm (chip H={H} µm). Max possible: {max_n}")
 
     return c
 
