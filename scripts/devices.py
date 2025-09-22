@@ -16,19 +16,37 @@ from pathlib import Path
 @gf.cell
 def OPA_straight_waveguide(
     length: float = 100.0,  # length in microns
-    cross_section: CrossSectionSpec = "xs_rwg3000"
+    cross_section: CrossSectionSpec = "xs_rwg3000",
+    mmi_cross_section: CrossSectionSpec | None = None,
+    with_mmi: bool = True,
 ) -> gf.Component:
-    """Simple straight waveguide from left to right for an OPA."""
+    """Straight OPA waveguide with optional 1x2 MMI combiner."""
+
     c = gf.Component()
 
-    # create straight waveguide
+    # Straight waveguide section
     wg = gf.components.straight(length=length, cross_section=cross_section)
-
-    # add to component
     wg_ref = c << wg
 
-    # expose ports
-    c.add_port(name="o1", port=wg_ref.ports["o1"])
+    if not with_mmi:
+        c.add_port(name="o1", port=wg_ref.ports["o1"])
+        c.add_port(name="o2", port=wg_ref.ports["o2"])
+        return c
+
+    # Use provided cross section for the MMI, defaulting to the waveguide xs
+    mmi_cs = mmi_cross_section or cross_section
+    mmi = lnoi400.cells.mmi1x2_optimized1550(cross_section=mmi_cs)
+    mmi_ref = c << mmi
+    mmi_ref.connect("o1", wg_ref.ports["o1"])
+
+    # Expose ports: two inputs (from MMI) and the straight output
+    c.add_port(name="in_bot", port=mmi_ref.ports["o2"])
+    c.add_port(name="in_top", port=mmi_ref.ports["o3"])
+    c.add_port(name="out", port=wg_ref.ports["o2"])
+
+    # Backwards compatible aliases
+    c.add_port(name="o1", port=mmi_ref.ports["o2"])
+    c.add_port(name="o3", port=mmi_ref.ports["o3"])
     c.add_port(name="o2", port=wg_ref.ports["o2"])
 
     return c

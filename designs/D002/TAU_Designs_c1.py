@@ -1,4 +1,3 @@
-
 from functools import partial
 from pathlib import Path
 import numpy as np
@@ -6,65 +5,99 @@ import lnoi400
 import gdsfactory as gf
 import sys, os
 
-# add repo root to path
+# -----------------------------------------------------------------------------
+# Repo root on path (so "scripts" is importable) and constants
+# -----------------------------------------------------------------------------
 sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from scripts import devices
 
 gf.clear_cache()
 
-# utility
+# -----------------------------------------------------------------------------
+# Edge coupler: load from GDS
+# -----------------------------------------------------------------------------
+# Path to your edge-coupler GDS (relative to this file)
+EDGE_COUPLER_GDS = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "utility_files", "LXT_LT_edge_coupler.gds")
+)
+EDGE_COUPLER_CELL = None  # set to the actual cell name if the topcell isn't the coupler
+
+EDGE_COUPLER = gf.import_gds(EDGE_COUPLER_GDS, cellname=EDGE_COUPLER_CELL)
+
+# -----------------------------------------------------------------------------
+# Utility
+# -----------------------------------------------------------------------------
 def to_itype(points, dbu):
     return [(int(round(x / dbu)), int(round(y / dbu))) for x, y in points]
 
 dbu = 0.001
 
-# chip frame
+# -----------------------------------------------------------------------------
+# Chip frame
+# -----------------------------------------------------------------------------
 @gf.cell
 def chip_frame():
     return gf.get_component("chip_frame", size=(10_000, 5000), center=(5050, 2525))
 
 chip_layout = chip_frame()
 
-# global parameters
-input_ext = 10
-double_taper = gf.get_component("double_linear_inverse_taper", input_ext=input_ext)
+# -----------------------------------------------------------------------------
+# Global parameters
+# -----------------------------------------------------------------------------
+input_ext = 10.0
 routing_roc = 50.0
 
-COUPLER_CROSS_SECTION = "xs_rwg1000"
-TAPER_LENGTH = 50.0
+# Coupler cross-section is 0.9 µm
+COUPLER_CROSS_SECTION = "xs_rwg900"
+TAPER_LENGTH = 200.0
 
-# --- Constraints from your spec ---
-MIN_SPACING_SAME = 490.0   # µm, between waveguides of the same width
-EDGE_MARGIN      = 350.0   # µm, clearance to top and bottom chip edges
+# Spacing constraints
+MIN_SPACING_SAME = 490.0  # µm (same cross-section rows)
+EDGE_MARGIN      = 400.0  # µm (top/bottom clearance)
+SPACING_DIFF     = 180.0   # µm (between adjacent different cross-sections)
 
-# For now: use 3 µm cross-section everywhere 
-CROSS_SECTIONS = ["xs_rwg3000", "xs_rwg3000", "xs_rwg2500"]
-STRAIGHT_NAMES = ["straight_rwg3000", "straight_rwg3000", "straight_rwg2500"]
+# Three row cross-sections
+CROSS_SECTIONS = ["xs_rwg3000", "xs_rwg2750", "xs_rwg2500"]
+STRAIGHT_NAMES = ["straight_rwg3000", "straight_rwg2750", "straight_rwg2500"]
 
 # Base straight length
-OPA_LENGTH = 400.0
+OPA_LENGTH = 8000.0
 
-# Pre-build a straight OPA for each set (one per cross-section)
-OPA_STRAIGHTS = [
-    devices.OPA_straight_waveguide(length=OPA_LENGTH, cross_section=cs)
+# -----------------------------------------------------------------------------
+# Pre-build per-set straights and transition tapers 
+# -----------------------------------------------------------------------------
+OPA_STRAIGHTS_WITH_MMI = [
+    devices.OPA_straight_waveguide(length=OPA_LENGTH, cross_section=cs, with_mmi=True)
+    for cs in CROSS_SECTIONS
+]
+
+OPA_STRAIGHTS_SINGLE = [
+    devices.OPA_straight_waveguide(length=OPA_LENGTH, cross_section=cs, with_mmi=False)
     for cs in CROSS_SECTIONS
 ]
 
 TRANSITION_TAPERS = [
     gf.components.taper_cross_section(
-        cross_section1=COUPLER_CROSS_SECTION,
-        cross_section2=cs,
+        cross_section1=COUPLER_CROSS_SECTION,  # 0.9 µm side (edge-coupler)
+        cross_section2=cs,                     # row cross-section
         length=TAPER_LENGTH,
         linear=True,
     )
     for cs in CROSS_SECTIONS
 ]
 
+# Number of rows (waveguides) that keep the dual-input MMI variant.
+# We want 4 sets × 3 cross-section bands = 12 rows.
+ROWS_WITH_MMI = 12
+
+# -----------------------------------------------------------------------------
+# Main builder with interleaved packing (0 -> 1 -> 2 -> repeat)
+# -----------------------------------------------------------------------------
 @gf.cell
 def die_assembled_grouped(
     min_spacing_same: float = MIN_SPACING_SAME,  # 490 µm for same cross-section
-    edge_margin: float = EDGE_MARGIN,            # 350 µm top/bottom margins
-    spacing_diff: float = 150.0,                  # 20 µm between different cross-sections
+    edge_margin: float = EDGE_MARGIN,            # 400 µm margins
+    spacing_diff: float = SPACING_DIFF,          # 180 µm between different cross-sections
 ) -> gf.Component:
     """
     Build a die with interleaved rows of three cross-sections (0->1->2->repeat).
@@ -84,22 +117,22 @@ def die_assembled_grouped(
     if y_max <= y_min:
         raise RuntimeError("Edge margins exceed chip height.")
 
-    # Routing bend factory (unchanged)
+    # Routing bend factory
     routing_bend = partial(
         gf.components.bend_euler,
         radius=routing_roc,
         with_arc_floorplan=True,
     )
 
-    # Helper: interleave types [0,1,2,0,1,2,...] while meeting spacing constraints.
-    # Greedy: for the next type, place the smallest y that satisfies both:
-    #   (1) y >= prev_y + spacing_diff  (adjacent rows)
-    #   (2) y >= last_y_for_this_type + min_spacing_same  (same-type separation)
+    # Interleaved greedy packer:
+    # Place rows as close as allowed while cycling types 0->1->2 and honoring:
+    # - y >= prev_y + spacing_diff           (adjacent rows diff spacing)
+    # - y >= last_y_for_type + min_spacing_same  (repeat type spacing)
     def pack_interleaved(y0: float, y1: float) -> list[tuple[float, int]]:
         last_for_type = {0: None, 1: None, 2: None}
         seq = []
         prev_y = None
-        t = 0  # start with type 0 -> 1 -> 2 -> repeat
+        t = 0  # type index: 0 -> 1 -> 2 -> repeat
 
         while True:
             needs = [y0]
@@ -115,17 +148,23 @@ def die_assembled_grouped(
             seq.append((y, t))
             last_for_type[t] = y
             prev_y = y
-            t = (t + 1) % 3  # cycle 0->1->2
+            t = (t + 1) % 3
 
         return seq
 
-    # Generate (y, type_idx) placements across full usable height
+    # Compute placements across the full usable height
     placements = pack_interleaved(y_min, y_max)
 
-    # Place rows
-    for y_center, set_idx in placements:
-        # select set-specific parts
-        opa_straight = OPA_STRAIGHTS[set_idx]
+    # Place and route each row
+    for row_idx, (y_center, set_idx) in enumerate(placements):
+        # set-specific parts
+        use_mmi = row_idx < ROWS_WITH_MMI
+
+        opa_straight = (
+            OPA_STRAIGHTS_WITH_MMI[set_idx]
+            if use_mmi
+            else OPA_STRAIGHTS_SINGLE[set_idx]
+        )
         transition_taper = TRANSITION_TAPERS[set_idx]
         xs_name = CROSS_SECTIONS[set_idx]
         straight_name = STRAIGHT_NAMES[set_idx]
@@ -135,17 +174,79 @@ def die_assembled_grouped(
         opa_ref.dmovex(W_total / 2.0 - opa_ref.xsize / 2.0)
         opa_ref.dmovey(y_center - opa_ref.ysize / 2.0)
 
-        # input coupler + transition taper
-        ec_in = c << double_taper
-        ec_in.dmove(
-            ec_in.ports["o1"].dcenter,
-            [-input_ext, opa_ref.ports["o1"].center[1]],
-        )
-        taper_in = c << transition_taper
-        taper_in.connect("o1", ec_in.ports["o2"])
+        # input edge couplers + transition tapers 
+        if use_mmi:
+            INPUT_SPACING = 125.0
 
-        # output coupler + transition taper
-        ec_out = c << double_taper
+            def add_input_route(
+                target_port_name: str,
+                vertical_offset: float,
+            ) -> tuple[gf.ComponentReference, gf.ComponentReference] | None:
+                if target_port_name not in opa_ref.ports:
+                    return None
+
+                target_port = opa_ref.ports[target_port_name]
+
+                desired_y = target_port.center[1] + vertical_offset
+                clamped_y = min(max(desired_y, y_min), y_max)
+                effective_offset = clamped_y - target_port.center[1]
+
+                ec = c << EDGE_COUPLER
+                ec.dmove(
+                    ec.ports["o1"].dcenter,
+                    [-input_ext, target_port.center[1] + effective_offset],
+                )
+                taper = c << transition_taper
+                taper.connect("o1", ec.ports["o2"])
+
+                start_port = taper.ports["o2"]
+
+                def bend_factory(*, size, cross_section=xs_name, **_):
+                    return lnoi400.cells.bend_S_spline_varying_width(
+                        size=size,
+                        cross_section1=cross_section,
+                        cross_section2=cross_section,
+                        npoints=201,
+                    )
+
+                gf.routing.route_single_sbend(
+                    c,
+                    port1=start_port,
+                    port2=target_port,
+                    bend_s=bend_factory,
+                    cross_section=xs_name,
+                )
+                return ec, taper
+
+            half_spacing = INPUT_SPACING / 2.0
+            add_input_route("in_bot", -half_spacing)
+            add_input_route("in_top", half_spacing)
+        else:
+            # Single-input configuration (legacy straight without MMI)
+            try:
+                single_input_port = opa_ref.ports["o1"]
+            except KeyError:
+                single_input_port = None
+            if single_input_port is not None:
+                ec_single = c << EDGE_COUPLER
+                ec_single.dmove(
+                    ec_single.ports["o1"].dcenter,
+                    [-input_ext, single_input_port.center[1]],
+                )
+                taper_single = c << transition_taper
+                taper_single.connect("o1", ec_single.ports["o2"])
+
+                gf.routing.route_single(
+                    c,
+                    taper_single.ports["o2"],
+                    single_input_port,
+                    cross_section=xs_name,
+                    bend=routing_bend,
+                    straight=straight_name,
+                )
+
+        # output edge coupler + transition taper 
+        ec_out = c << EDGE_COUPLER
         ec_out.drotate(180)
         ec_out.dmove(
             ec_out.ports["o1"].dcenter,
@@ -155,15 +256,7 @@ def die_assembled_grouped(
         taper_out.drotate(180)
         taper_out.connect("o1", ec_out.ports["o2"])
 
-        # routes (use the per-set cross-section + straight)
-        gf.routing.route_single(
-            c,
-            taper_in.ports["o2"],
-            opa_ref.ports["o1"],
-            cross_section=xs_name,
-            bend=routing_bend,
-            straight=straight_name,
-        )
+        # route output (use per-set cross-section + straight recipe)
         gf.routing.route_single(
             c,
             taper_out.ports["o2"],
@@ -175,7 +268,9 @@ def die_assembled_grouped(
 
     return c
 
-# --- Build and show die -------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Build and show die
+# -----------------------------------------------------------------------------
 die = die_assembled_grouped()
 die.plot()
 die.show()

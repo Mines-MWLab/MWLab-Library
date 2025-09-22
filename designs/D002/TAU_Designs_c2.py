@@ -138,10 +138,14 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
 
     return c
 
-# -----------------------------------------------------------------------------
-# Build and show die 
-# -----------------------------------------------------------------------------
+# --- Build, FLATTEN, and write ----------------------------------------------
 die = die_assembled_c2(pitch=MIN_SPACING)
-die.plot()
-die.show()
-# _ = die.write_gds(gdsdir=Path.cwd())
+
+# make a copy and flatten so we don't mutate the hierarchical source
+die_flat = gf.Component("TAU_Designs_c2_die_flat")
+die_flat << die
+die_flat.flatten()  # pulls all refs up to top-level polygons
+
+die_flat.plot()
+die_flat.show()
+_ = die_flat.write_gds(gdsdir=Path.cwd())
