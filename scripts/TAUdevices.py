@@ -8,7 +8,7 @@ import lnoi400
 from gplugins.common.config import PATH
 from gdsfactory.typings import CrossSectionSpec, ComponentSpec
 import numpy as np
-import components as orc_components
+from . import components as orc_components
 
 from functools import partial
 import matplotlib.pyplot as plt

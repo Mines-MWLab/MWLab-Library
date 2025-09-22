@@ -1064,7 +1064,6 @@ def dualEOcomb2(
     return c
 
 
-
 #####################
 # Dual EO comb with horizontal mmi input and sbend transition
 #####################
