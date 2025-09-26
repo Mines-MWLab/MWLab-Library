@@ -191,7 +191,8 @@ def tunable_mzm_laser_Redwan():
     }
 
     # 4. Create and place the input MMIs at the specified positions
-    mmi_component = orc_components.custom_mmi()
+    mmi_component = orc_components.custom_mmi_AQ()
+    main_input_mmi = c.add_ref(mmi_component)
     input_mmi_references = {}
 
     for name in mzm_variants.keys():
@@ -222,7 +223,6 @@ def tunable_mzm_laser_Redwan():
         # store reference to use it later
         output_mmi_references[name] = out_mmi
 
-
     # 6. Define the start and end ports for the new route
     ##output single ports of the mmis
     coarse_output_mmi = output_mmi_references['coarse'].ports['o1']
@@ -234,28 +234,99 @@ def tunable_mzm_laser_Redwan():
     medium_input_mmi = input_mmi_references['medium'].ports['o1']
     fine_input_mmi = input_mmi_references['fine'].ports['o1']
 
+    ##main input mmi connection
+    # main_input_mmi.connect('o3', input_mmi_references['coarse'].ports['o1'])
+    main_input_mmi.move((-1200, 2150))
+    main_input_mmi_bot_right_port = main_input_mmi.ports['o3']
+    main_input_mmi_top_right_port = main_input_mmi.ports['o2']
+
+    # Create and move the phase shifter first
+    phase_shifter = orc_components.single_custom_ps(modulation_length=2000)
+    ps_ref = c.add_ref(phase_shifter)
+    ps_ref.movey(2500)
+    ps_ref.movex(1000)
+
+    ps_ref_right_port = ps_ref.ports['top_o2']
+    ps_ref_left_port = ps_ref.ports['top_o1']
+
+    waypoint = [(3550, 3250)]
 
     # 7. Generate the waveguide route
+    ## routing between coarse and medium
     route1 = gf.routing.route_single(c,
-        port1=coarse_output_mmi,
-        port2=medium_output_mmi,
-        cross_section='xs_rwg2000',
-        bend='L_turn_bend',
-        radius= 100,
-        straight='straight_rwg2000'
+                                     port1=coarse_output_mmi,
+                                     port2=medium_output_mmi,
+                                     cross_section='xs_rwg2000',
+                                     bend='L_turn_bend',
+                                     radius=100,
+                                     straight='straight_rwg2000'
+                                     )
+
+    ## routing between medium and fine
+    route2 = gf.routing.route_single(c,
+                                     port1=medium_input_mmi,
+                                     port2=fine_input_mmi,
+                                     cross_section='xs_rwg2000',
+                                     bend='L_turn_bend',
+                                     radius=100,
+                                     straight='straight_rwg2000'
+                                     )
+
+    ## routing between phase shifter and fine
+    route3 = gf.routing.route_single(c,
+                                     port1=ps_ref_right_port,
+                                     port2=fine_output_mmi,
+                                     cross_section='xs_rwg2000',
+                                     bend='L_turn_bend',
+                                     radius=100,
+                                     straight='straight_rwg2000',
+                                     steps=[
+                                         {'x': 3000},  # 1. Go straight until x=3000
+                                         {'y': 3150},  # 2. Turn and go straight until y=3150
+                                         {'x': 4000},  # 3. Turn and go straight until x=4000
+                                         {'y': 0},  # 4. Turn and go straight until y=0
+                                     ],
+                                     )
+
+    ## routing between main input mmi and phase shifter
+    route4 = gf.routing.route_single(c,
+                                     port1=main_input_mmi_top_right_port,
+                                     port2=ps_ref_left_port,
+                                     cross_section='xs_rwg2000',
+                                     bend='L_turn_bend',
+                                     radius=100,
+                                     straight='straight_rwg2000',
+                                     )
+
+    ## routing between main input mmi and coarse
+    route5 = gf.routing.route_single(c,
+                                     port1=main_input_mmi_bot_right_port,
+                                     port2=coarse_input_mmi,
+                                     cross_section='xs_rwg2000',
+                                     bend='L_turn_bend',
+                                     radius=100,
+                                     straight='straight_rwg2000',
+                                     )
+
+    return c
+
+
+@gf.cell
+
+def soliton_ring_Redwan():
+    """
+    Creates the soliton ring resonator by calling the concentric rings component.
+
+    Args:
+        coupling_gap_bus: The gap between the bus waveguide and the outer ring.
+    """
+    # Call the component from the 'components' file, passing the specified gap.
+    # The other parameters will use their default values.
+    coupling_gap: float = 2.0
+
+    c = orc_components.concentric_rings_with_bus(
+        coupling_gap_bus=coupling_gap
     )
-
-
-    #8 add phase shifter
-
-
-    # Create the phase shifter component
-    phase_shifter = lnoi400.cells.eo_phase_shifter(modulation_length= 2500)
-    ps_ref = c.add_ref(phase_shifter)
-
-    ps_ref.movey(-500)
-    ps_ref.movex(-200)
-
     return c
 
 ##################################################################################### End: Redwan Islam
