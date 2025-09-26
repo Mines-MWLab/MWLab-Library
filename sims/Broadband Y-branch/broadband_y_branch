@@ -1,0 +1,110 @@
+import numpy as np
+import gdsfactory as gf
+from gdsfactory.typings import CrossSectionSpec
+
+import lnoi400
+lnoi400.PDK.activate()
+
+# If you have the lnoi400 PDK loaded, xs like 'xs_rwg1000' should exist.
+# This helper tries to use 'xs_rwg{width_nm}' and falls back to a generic strip xs.
+def xs_from_width(width_um: float) -> CrossSectionSpec:
+    xs_name = f"xs_rwg{int(round(width_um*1000))}"
+    gf.get_cross_section(xs_name)  # raises if not registered
+    return xs_name
+    
+@gf.cell
+def s_bend_to_center(
+    S0: float = 2.0,
+    L_merge: float = 120.0,
+    width_um: float = 0.9,
+) -> gf.Component:
+    """Euler S-bend that moves from y=±S0/2 to y=0 across +x by L_merge."""
+    xs = xs_from_width(width_um)
+    # Top: dy is -S0/2 (downwards). Bottom: dy is +S0/2 (upwards).
+    # We make a parametric S-bend and mirror for the bottom branch later.
+    c = gf.Component("s_bend_to_center")
+    bend_top = gf.components.bend_s(size=(L_merge, -S0/2), cross_section=xs, npoints=99)
+    rt = c << bend_top
+    # Expose ports: o1 at left, o2 at right
+    c.add_port(name="o1", port=rt.ports["o1"])
+    c.add_port(name="o2", port=rt.ports["o2"])
+    return c
+
+@gf.cell
+def straight_input(length: float = 10.0, width_um: float = 0.9) -> gf.Component:
+    return gf.components.straight(length=length, cross_section=xs_from_width(width_um))
+
+@gf.cell
+def straight_stem(length: float = 30.0, width_um: float = 2.0) -> gf.Component:
+    return gf.components.straight(length=length, cross_section=xs_from_width(width_um))
+
+@gf.cell
+def y_junction_tflt(
+    Win: float = 0.9,         # input width (single-mode at 780 nm)
+    Wstem: float = 2.0,       # stem width (carries 780 & 1550)
+    S0: float = 2.0,          # input separation (center-to-center)
+    L_entry: float = 10.0,    # straight before merge (per branch)
+    L_merge: float = 120.0,   # S-bend length to center
+    L_out: float = 30.0,      # straight stem after merge
+) -> gf.Component:
+    c = gf.Component("y_junction_tflt")
+
+    # --- Top input straight ---
+    top_in = c << straight_input(length=L_entry, width_um=Win)
+    top_in.movey(+S0/2)
+
+    # --- Bottom input straight ---
+    bot_in = c << straight_input(length=L_entry, width_um=Win)
+    bot_in.movey(-S0/2)
+
+    # --- S-bends to center ---
+    sb_top = c << s_bend_to_center(S0=S0, L_merge=L_merge, width_um=Win)
+    sb_top.connect(port="o1", other=top_in, other_port_name="o2")
+
+    sb_bot = c << s_bend_to_center(S0=S0, L_merge=L_merge, width_um=Win)
+    # Mirror vertically to go upwards (+dy)
+    sb_bot.mirror_y()
+    sb_bot.connect(port="o2", other=bot_in, other_port_name="o2")  # after mirror, o2 is at left
+
+    # The two S-bend right ports should now coincide at ~ (L_entry + L_merge, 0)
+    # We'll insert a short taper to transition from Win to Wstem before the stem.
+    taper = gf.components.taper_cross_section(
+        length=5.0,
+        cross_section1=xs_from_width(Win),
+        cross_section2=xs_from_width(Wstem),
+    )
+    taper_ref = c << taper
+    taper_ref.connect(port="o1", other=sb_top, other_port_name="o2")
+
+    # --- Stem straight (wider) ---
+    stem = c << straight_stem(length=L_out, width_um=Wstem)
+    stem.connect(port="o1", other=taper_ref, other_port_name="o2")
+
+    # --- (Optional) small rectangular "junction pad" to ensure a solid mask bridge ---
+    # This helps foundry booleaning and avoids tiny gaps.
+    pad_len = 0.6  # um
+    pad_w   = max(Wstem, Win)
+    pad = gf.components.rectangle(size=(pad_len, pad_w), layer=(1, 0))  # ridge layer
+    rpad = c << pad
+    rpad.move((taper_ref.ports["o2"].center[0] - pad_len/2, -pad_w/2))
+
+    # --- IO Ports ---
+    c.add_port(name="in_top", port=top_in.ports["o1"])
+    c.add_port(name="in_bot", port=bot_in.ports["o1"])
+    c.add_port(name="out", port=stem.ports["o2"])
+
+    return c
+
+if __name__ == "__main__":
+    # Example parameters (good first pass for 780+1550 nm)
+    Win = 0.9
+    Wstem = 2.0
+    S0 = 2.0
+    L_entry = 10.0
+    L_merge = 120.0
+    L_out = 30.0
+
+    c = y_junction_tflt(Win=Win, Wstem=Wstem, S0=S0, L_entry=L_entry, L_merge=L_merge, L_out=L_out)
+    print("Bounding box (um):", c.size_info)
+    c.show()          # open in klayout if configured
+    #c.write_gds("y_junction_tflt.gds")

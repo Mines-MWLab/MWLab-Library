@@ -45,6 +45,13 @@ frame = 50
 # minimum required vertical spacing (includes distance to top/bottom facets)
 MIN_SPACING = 490.0  # um
 
+# per-device manual placement tweaks (dx, dy) in microns
+DEVICE_OFFSETS = {
+    "PM_MLL_cavity_AQ": (0.0, -50.0),
+    "AM_MLL_cavity_AQ": (0.0, 0.0),
+    "tunable_mzm_laser_Redwan": (0.0, 0.0),
+}
+
 # -----------------------------------------------------------------------------
 # Instantiate the three devices (single copies)
 # -----------------------------------------------------------------------------
@@ -93,9 +100,10 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
     )
 
     def place_and_center(ref_comp: gf.Component, y: float, label: str) -> gf.ComponentReference:
+        dx, dy = DEVICE_OFFSETS.get(label, (0.0, 0.0))
         r = c << ref_comp
-        r.dmovex(W / 2 - r.xsize / 2)
-        r.dmovey(y)
+        r.dmovex(W / 2 - r.xsize / 2 + dx)
+        r.dmovey(y + dy)
         c.add_label(text=label, position=(r.center[0], r.center[1] + 60), layer=(66, 0))
         return r
 
@@ -106,36 +114,6 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
     # ------------------------------------------------------------------
     # EDGE COUPLERS AND ROUTING
     # ------------------------------------------------------------------
-    # The code below places left/right edge couplers for each device and routes to
-    # their ports using xs_rwg1000/straight_rwg1000. Uncomment to enable.
-
-    # # Left / Right edge-couplers for PM
-    # ec_in_pm = c << double_taper
-    # ec_in_pm.dmove(ec_in_pm.ports["o1"].dcenter, [-input_ext, pm_ref.ports["o1"].center[1]])
-    # ec_out_pm = c << double_taper
-    # ec_out_pm.drotate(180)
-    # ec_out_pm.dmove(ec_out_pm.ports["o1"].dcenter, [input_ext + W, pm_ref.ports["o2"].center[1]])
-    # gf.routing.route_single(c, ec_in_pm.ports["o2"], pm_ref.ports["o1"], cross_section="xs_rwg1000", bend=routing_bend, straight="straight_rwg1000")
-    # gf.routing.route_single(c, ec_out_pm.ports["o2"], pm_ref.ports["o2"], cross_section="xs_rwg1000", bend=routing_bend, straight="straight_rwg1000")
-
-    # # Left / Right edge-couplers for AM
-    # ec_in_am = c << double_taper
-    # ec_in_am.dmove(ec_in_am.ports["o1"].dcenter, [-input_ext, am_ref.ports["o1"].center[1]])
-    # ec_out_am = c << double_taper
-    # ec_out_am.drotate(180)
-    # ec_out_am.dmove(ec_out_am.ports["o1"].dcenter, [input_ext + W, am_ref.ports["o2"].center[1]])
-    # gf.routing.route_single(c, ec_in_am.ports["o2"], am_ref.ports["o1"], cross_section="xs_rwg1000", bend=routing_bend, straight="straight_rwg1000")
-    # gf.routing.route_single(c, ec_out_am.ports["o2"], am_ref.ports["o2"], cross_section="xs_rwg1000", bend=routing_bend, straight="straight_rwg1000")
-
-    # # Left / Right edge-couplers for TZ
-    # ec_in_tz = c << double_taper
-    # ec_in_tz.dmove(ec_in_tz.ports["o1"].dcenter, [-input_ext, tz_ref.ports["o1"].center[1]])
-    # ec_out_tz = c << double_taper
-    # ec_out_tz.drotate(180)
-    # ec_out_tz.dmove(ec_out_tz.ports["o1"].dcenter, [input_ext + W, tz_ref.ports["o2"].center[1]])
-    # gf.routing.route_single(c, ec_in_tz.ports["o2"], tz_ref.ports["o1"], cross_section="xs_rwg1000", bend=routing_bend, straight="straight_rwg1000")
-    # gf.routing.route_single(c, ec_out_tz.ports["o2"], tz_ref.ports["o2"], cross_section="xs_rwg1000", bend=routing_bend, straight="straight_rwg1000")
-
     return c
 
 # --- Build, FLATTEN, and write ----------------------------------------------

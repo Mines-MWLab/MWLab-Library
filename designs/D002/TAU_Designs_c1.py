@@ -16,7 +16,7 @@ gf.clear_cache()
 # -----------------------------------------------------------------------------
 # Edge coupler: load from GDS
 # -----------------------------------------------------------------------------
-# Path to your edge-coupler GDS (relative to this file)
+# Path to edge-coupler GDS (relative to this file)
 EDGE_COUPLER_GDS = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "utility_files", "LXT_LT_edge_coupler.gds")
 )
@@ -54,7 +54,7 @@ TAPER_LENGTH = 200.0
 # Spacing constraints
 MIN_SPACING_SAME = 490.0  # µm (same cross-section rows)
 EDGE_MARGIN      = 400.0  # µm (top/bottom clearance)
-SPACING_DIFF     = 180.0   # µm (between adjacent different cross-sections)
+SPACING_DIFF     = 180.0  # µm (between adjacent different cross-sections)
 
 # Three row cross-sections
 CROSS_SECTIONS = ["xs_rwg3000", "xs_rwg2750", "xs_rwg2500"]
