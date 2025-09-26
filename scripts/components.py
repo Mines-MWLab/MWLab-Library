@@ -451,6 +451,10 @@ def trail_cpw_mpl(
 #####################################################################################
 # Authors: Ajwaad Quashef, ORC 2025
 
+################
+# Straights
+################
+
 @gf.cell
 def _straight(
     length: float = 10.0,
@@ -483,9 +487,10 @@ def custom_mmi_AQ(
     """Ybranch/MMI inverse optimized for broadband transmission at 2300 nm."""
 
     c = gf.Component()
-    script_dir = pathlib.Path(__file__).parent.resolve()
-    gds_file_path = script_dir / "utility_files" / "y_branch_3D.gds"
 
+    # script_dir = pathlib.Path(__file__).parent.resolve()
+    script_dir = pathlib.Path("C://Users/kbmdqu/MWLab-Library/scripts")
+    gds_file_path = script_dir / "utility_files" / "ybranch_3D_2300nm_len=64um_v1.gds"
     y_branch_geom = gf.import_gds(gds_file_path)
     # y_branch_geom = gf.import_gds("S:/61501_Users/Ajwaad/LXT PDK/Layout/y_branch_3D.gds")
     y_branch_ref = c << y_branch_geom
@@ -860,7 +865,7 @@ def linear_inverse_taper_AQ(
     cross_section_start: CrossSectionSpec = "xs_rwg750",
     cross_section_end: CrossSectionSpec = "xs_rwg2000",
     taper_length: float = 20.0,
-    input_ext: float = 0.0,
+    input_ext: float = 10.0,
 ) -> gf.Component:
     """Inverse rib width taper for edge coupler"""
 
@@ -892,6 +897,56 @@ def linear_inverse_taper_AQ(
     inverse_taper.flatten()
 
     return inverse_taper
+
+
+@gf.cell
+def tilted_inverse_taper_AQ(
+    angle: float = 16.4,
+    bend_radius: float = 100.0,
+    taper_length: float = 50.0,
+    cross_section_start: CrossSectionSpec = "xs_rwg750",
+    cross_section_end: CrossSectionSpec = "xs_rwg2000",
+    input_ext: float = 10.0,
+) -> gf.Component:
+    """
+    Creates a taper tilted at a specific angle, followed by a corrective
+    Euler bend to straighten the path.
+    """
+    c = gf.Component()
+
+    # 1. Create the taper component
+    taper = linear_inverse_taper_AQ(
+        taper_length=taper_length,
+        cross_section_start=cross_section_start,
+        cross_section_end=cross_section_end,
+        input_ext=input_ext,
+    )
+
+    # 2. Create the corrective bend. It bends by -angle degrees.
+    corrective_bend = gf.components.bend_euler(
+        radius=bend_radius,
+        angle=-angle,
+        cross_section=cross_section_end,
+    )
+
+    # 3. Add references to the components
+    taper_ref = c << taper
+    bend_ref = c << corrective_bend
+
+    # 4. Rotate the taper to the desired angle
+    taper_ref.rotate(angle)
+
+    # 5. Connect the bend to the taper's output port.
+    # The connect() function will automatically rotate and move the bend
+    # so that its 'o1' port aligns with the taper's angled 'o2' port.
+    bend_ref.connect("o1", taper_ref.ports["o2"])
+
+    # 6. Expose the ports of the new composite component
+    c.add_port("o1", port=taper_ref.ports["o1"])
+    c.add_port("o2", port=bend_ref.ports["o2"])
+
+    c.flatten()
+    return c
 
 ##################################################################################### End: AQ
 
