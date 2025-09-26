@@ -38,5 +38,41 @@ def xs_rwg750(
         sections=sections,
     )
 
+@xsection
+def xs_rwg5000(
+    layer: LayerSpec = "LN_RIDGE",
+    width: float = 5,
+) -> CrossSection:
+    sections = (
+        gf.Section(
+            width=18,
+            layer="LN_SLAB",
+            name="slab",
+            simplify=30 * nm,
+        ),
+    )
+    return gf.cross_section.strip(
+        width=width,
+        layer=layer,
+        sections=sections,
+    )
 
+@xsection
+def xs_rwg1380(
+    layer: LayerSpec = "LN_RIDGE",
+    width: float = 1.38,
+) -> CrossSection:
+    sections = (
+        gf.Section(
+            width=18,
+            layer="LN_SLAB",
+            name="slab",
+            simplify=30 * nm,
+        ),
+    )
+    return gf.cross_section.strip(
+        width=width,
+        layer=layer,
+        sections=sections,
+    )
 ## Done- ORC
