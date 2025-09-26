@@ -8,7 +8,7 @@ from lnoi400.spline import bend_S_spline_varying_width
 import numpy as np
 from gdsfactory.routing import route_single
 import pathlib
-
+from gdsfactory.path import arc
 from functools import partial
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -903,7 +903,6 @@ def linear_inverse_taper_AQ(
 # Author: Redwan Islam, ORC 2025
 
 
-##custom eo_phase_shifter
 @gf.cell
 def eo_phase_shifter_no_taper(
     modulation_length: float = 7500.0,
@@ -967,24 +966,25 @@ def eo_phase_shifter_no_taper(
 ## custom mzm function
 @gf.cell
 def _custom_mzm_interferometer(
-    modulation_length: float = 7500.0,
-    length_imbalance: float = 100.0,
-    bias_tuning_section_length: float = 750.0,
-    sbend_large_size: tuple[float, float] = (200.0, 50.0),
-    sbend_small_size: tuple[float, float] = (200.0, -45.0),
-    sbend_small_straight_extend: float = 5.0,
-    lbend_tune_arm_reff: float = 75.0,
-    lbend_combiner_reff: float = 80.0,
+        modulation_length: float = 7500.0,
+        length_imbalance: float = 100.0,
+        bias_tuning_section_length: float = 750.0,
+        sbend_large_size: tuple[float, float] = (200.0, 50.0),
+        sbend_small_size: tuple[float, float] = (200.0, -45.0),
+        sbend_small_straight_extend: float = 5.0,
+        lbend_tune_arm_reff: float = 75.0,
+        lbend_combiner_reff: float = 80.0,
 ) -> gf.Component:
     """
     Custom MZM interferometer core with constant 2um rib width, without MMI
-    splitter/combiner.
+    splitter/combiner. Updated to calculate arm spacing based on custom_mmi_AQ.
     """
     interferometer = gf.Component()
     xs_custom = "xs_rwg2000"
 
-    # Get MMI component info for positioning, but do not place the component
-    splitter_combiner_cell = custom_mmi()
+    # Get MMI component info for positioning, but do not place the component.
+    # This now uses custom_mmi_AQ to get the correct port separation.
+    splitter_combiner_cell = custom_mmi_AQ()
     port_separation_y = abs(
         splitter_combiner_cell.ports["o3"].dy - splitter_combiner_cell.ports["o2"].dy
     )
@@ -1100,25 +1100,26 @@ def _custom_mzm_interferometer(
 
 @gf.cell
 def custom_mzm(
-    modulation_length: float = 7500.0,
-    length_imbalance: float = 100.0,
-    lbend_tune_arm_reff: float = 75.0,
-    rf_pad_start_width: float = 80.0,
-    rf_central_conductor_width: float = 10.0,
-    rf_ground_planes_width: float = 180.0,
-    rf_gap: float = 4.0,
-    rf_pad_length_straight: float = 10.0,
-    rf_pad_length_tapered: float = 300.0,
-    bias_tuning_section_length: float = 700.0,
-    cpw_cell: ComponentSpec = uni_cpw_straight,
-    with_heater: bool = False,
-    heater_offset: float = 1.2,
-    heater_width: float = 1.0,
-    heater_pad_size: tuple[float, float] = (75.0, 75.0),
+        modulation_length: float = 7500.0,
+        length_imbalance: float = 100.0,
+        lbend_tune_arm_reff: float = 75.0,
+        rf_pad_start_width: float = 80.0,
+        rf_central_conductor_width: float = 10.0,
+        rf_ground_planes_width: float = 180.0,
+        rf_gap: float = 4.0,
+        rf_pad_length_straight: float = 10.0,
+        rf_pad_length_tapered: float = 300.0,
+        bias_tuning_section_length: float = 700.0,
+        cpw_cell: ComponentSpec = uni_cpw_straight,
+        with_heater: bool = False,
+        heater_offset: float = 1.2,
+        heater_width: float = 1.0,
+        heater_pad_size: tuple[float, float] = (75.0, 75.0),
 ) -> gf.Component:
     """
     Custom Mach-Zehnder modulator with constant 2um rib width and no tapers.
     The MMI splitter/combiner are removed and the optical ports are exposed.
+    The geometric calculations have been updated for custom_mmi_AQ.
     """
     mzm = gf.Component()
 
@@ -1147,7 +1148,10 @@ def custom_mzm(
     rf_line.dmove(rf_line.ports["e1"].dcenter, (0.0, 0.0))
 
     # --- Interferometer Subcell ---
-    splitter = custom_mmi()
+    # Instantiate the target MMI to get its port separation for calculations.
+    splitter = custom_mmi_AQ()
+    port_separation = abs(splitter.ports["o2"].dy - splitter.ports["o3"].dy)
+
     sbend_large_AR = 6
     gap_eff = rf_gap + 2 * np.sum(
         [
@@ -1157,17 +1161,22 @@ def custom_mzm(
         ]
     )
     GS_separation = rf_pad_start_width * gap_eff / rf_central_conductor_width
+
+    # This calculation is now based on the actual port separation of custom_mmi_AQ.
     sbend_large_v_offset = (
-        0.5 * rf_pad_start_width
-        + 0.5 * GS_separation
-        - 0.5 * splitter.settings["port_ratio"] * splitter.settings["width_mmi"]
+            0.5 * rf_pad_start_width
+            + 0.5 * GS_separation
+            - 0.5 * port_separation
     )
+
     sbend_small_straight_length = rf_pad_length_straight * 0.5
+
+    # This calculation is also updated.
     lbend_combiner_reff = (
-        0.5 * rf_pad_start_width
-        + lbend_tune_arm_reff
-        + 0.5 * GS_separation
-        - 0.5 * splitter.settings["port_ratio"] * splitter.settings["width_mmi"]
+            0.5 * rf_pad_start_width
+            + lbend_tune_arm_reff
+            + 0.5 * GS_separation
+            - 0.5 * port_separation
     )
 
     interferometer = mzm << _custom_mzm_interferometer(
@@ -1183,10 +1192,10 @@ def custom_mzm(
             - 2 * sbend_small_straight_length,
             -0.5
             * (
-                rf_pad_start_width
-                - rf_central_conductor_width
-                + GS_separation
-                - gap_eff
+                    rf_pad_start_width
+                    - rf_central_conductor_width
+                    + GS_separation
+                    - gap_eff
             ),
         ),
         sbend_small_straight_extend=sbend_small_straight_length,
@@ -1216,8 +1225,8 @@ def custom_mzm(
         ht_ref.dmove(
             origin=ht_ref.ports["ht_start"].dcenter,
             destination=(
-                np.array(interferometer.ports["long_bias_branch_start"].dcenter)
-                + heater_disp
+                    np.array(interferometer.ports["long_bias_branch_start"].dcenter)
+                    + heater_disp
             ),
         )
 
@@ -1266,5 +1275,115 @@ def custom_mmi(
         cross_section=cross_section,
         **kwargs,
     )
+
+##  custom phase eo phase shifter
+@gf.cell
+def single_custom_ps(
+    modulation_length: float = 3000.0,
+    rib_width: float = 2.0,
+    rf_central_conductor_width: float = 10.0,
+    rf_gap: float = 4.5,
+    rf_ground_planes_width: float = 180.0,
+) -> gf.Component:
+    """
+    Creates a dual-waveguide EO shifter with a constant waveguide width.
+
+    This component features two parallel optical waveguides with no tapers,
+    placed symmetrically within the gaps of a single CPW transmission line.
+    """
+    c = gf.Component()
+
+    # 1. Instantiate the single RF Transmission Line (CPW)
+    rf_line = c << lnoi400.cells.uni_cpw_straight(
+        length=modulation_length,
+        signal_width=rf_central_conductor_width,
+        gap_width=rf_gap,
+        ground_planes_width=rf_ground_planes_width,
+    )
+
+    # 2. Define the cross-section for the optical waveguides
+    # We get the standard rib waveguide cross-section and set a new width.
+    xs_waveguide = gf.get_cross_section("xs_rwg2000")
+
+    # 3. Create the optical arms as simple straight waveguides (no tapers)
+    optical_arm = gf.components.straight(
+        length=modulation_length, cross_section=xs_waveguide
+    )
+
+    arm_top = c << optical_arm
+    # arm_bottom = c << optical_arm
+
+    # 4. Position the optical arms in the CPW gaps
+    y_offset = 0.5 * (rf_central_conductor_width + rf_gap)
+    rf_line.dcenter = (0, 0)
+    arm_top.dcenter = (rf_line.dcenter[0], y_offset)
+    # arm_bottom.dcenter = (rf_line.dcenter[0], -y_offset)
+
+    # 5. Add ports to the top-level component
+    c.add_ports(rf_line.ports)
+    c.add_ports(arm_top.ports, prefix="top_")
+    # c.add_ports(arm_bottom.ports, prefix="bot_")
+
+    # c.flatten()
+    return c
+
+## Concentric rings for soliton
+@gf.cell
+def concentric_rings_with_bus(
+    radius_inner: float = 230.0,
+    gap_inner_outer: float = 6.3,
+    coupling_gap_bus: float = 3,
+    bus_length: float = 400.0,
+) -> gf.Component:
+    """
+    Creates a component with two concentric rings and a coupled bus waveguide.
+
+    Args:
+        radius_inner: Radius of the inner ring path.
+        gap_inner_outer: Edge-to-edge gap between inner and outer rings.
+        coupling_gap_bus: Edge-to-edge gap between the outer ring and the bus.
+        bus_length: Length of the straight bus waveguide.
+    """
+    c = gf.Component("resonator_with_bus")
+
+    # --- Cross-section Definitions ---
+    xs_inner = gf.get_cross_section('xs_rwg5000')
+    xs_outer = gf.get_cross_section('xs_rwg1380', width=1.380)
+    xs_bus = gf.get_cross_section('xs_rwg2000')
+
+    # --- Inner Ring ---
+    path_inner = arc(radius=radius_inner, angle=360)
+    inner_ring = c << path_inner.extrude(cross_section=xs_inner)
+
+    # --- Outer Ring ---
+    # Calculate radius using widths from cross-sections for accuracy
+    radius_outer_center = (
+        radius_inner
+        + (xs_inner.width / 2)
+        + gap_inner_outer
+        + (xs_outer.width / 2)
+    )
+    path_outer = arc(radius=radius_outer_center, angle=360)
+    outer_ring = c << path_outer.extrude(cross_section=xs_outer)
+    outer_ring.center = inner_ring.center
+
+    # --- Bus Waveguide ---
+    bus_wg = straight_rwg2000(length=bus_length)
+    bus_ref = c << bus_wg
+
+    # --- Position the bus waveguide at the BOTTOM ---
+    # Correctly calculate the vertical position for the bus waveguide's center
+    y_bus_center = -(
+        5/2+gap_inner_outer+1.38+1+coupling_gap_bus
+    )
+
+    # Move the bus waveguide to the calculated position.
+    bus_ref.movex(-bus_length/2)
+    bus_ref.dmovey(y_bus_center)
+
+    # Add ports from the bus waveguide to the final component
+    c.add_ports(bus_ref.ports)
+
+    return c
 
 ##################################################################################### End: Redwan Islam
