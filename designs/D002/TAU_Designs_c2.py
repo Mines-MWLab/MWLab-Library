@@ -1,5 +1,6 @@
 from functools import partial
 from pathlib import Path
+import math
 import numpy as np
 import lnoi400
 import gdsfactory as gf
@@ -8,6 +9,7 @@ import sys, os
 # add repo root to path
 sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from scripts import devices, TAUdevices
+gf.config.write_ports_on_component = True
 
 # --------------------------------------------------------------------------------------
 # TAU_Designs_c2: layout study placing exactly one copy of three devices on a chip frame
@@ -18,6 +20,13 @@ from scripts import devices, TAUdevices
 # --------------------------------------------------------------------------------------
 
 gf.clear_cache()
+
+# Edge coupler (reuse the same as TAU_Designs_c1)
+EDGE_COUPLER_GDS = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "utility_files", "LXT_LT_edge_coupler.gds")
+)
+EDGE_COUPLER_CELL = None  # set explicitly if the edge coupler cell is not the top cell
+EDGE_COUPLER = gf.import_gds(EDGE_COUPLER_GDS, cellname=EDGE_COUPLER_CELL)
 
 # utility
 
@@ -37,8 +46,8 @@ chip_layout = chip_frame()
 
 # global parameters
 input_ext = 10
-# double_taper is defined but not used now (kept for when we enable edge couplers)
-double_taper = gf.get_component("double_linear_inverse_taper", input_ext=input_ext)
+# edge coupler component (referenced in legacy code comments)
+double_taper = EDGE_COUPLER
 routing_roc = 50.0
 frame = 50
 
@@ -47,10 +56,201 @@ MIN_SPACING = 490.0  # um
 
 # per-device manual placement tweaks (dx, dy) in microns
 DEVICE_OFFSETS = {
-    "PM_MLL_cavity_AQ": (0.0, -50.0),
-    "AM_MLL_cavity_AQ": (0.0, 0.0),
-    "tunable_mzm_laser_Redwan": (0.0, 0.0),
+    "PM_MLL_cavity_AQ": (0.0, -150.0),
+    "AM_MLL_cavity_AQ": (0.0, -150.0),
+    "tunable_mzm_laser_Redwan": (1050.0, -200.0),
+    "soliton_ring_Redwan": (2000.0, 0.0),
 }
+
+# optional sweep panel global offset (dx, dy) in microns
+SPIRAL_SWEEP_OFFSET = (-4000.0, -1600.0)
+SPIRAL_BLOCK_SEPARATION = 500.0
+
+RING_VORTEX_PORT_PITCH = 25.0
+RING_VORTEX_SWEEP_OFFSET = (500.0, 2800.0)
+RING_VORTEX_SWEEP_Q_VALUES = [336, 338, 340, 342]  # top to bottom
+RING_VORTEX_SWEEP_GAPS = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65]  
+RING_VORTEX_SWEEP_ROW_PITCH = 485.0
+RING_VORTEX_SWEEP_COL_PITCH = 170.0
+
+# soliton ring sweep configuration
+SOLITON_RING_SWEEP_GAPS = [2.0, 2.5, 3.0, 3.5]  # um
+SOLITON_RING_SWEEP_OFFSET = (2800.0, -1000.0)
+SOLITON_RING_SWEEP_HORIZONTAL_PITCH = 600.0
+SOLITON_RING_SWEEP_VERTICAL_PITCH = 25.0
+SOLITON_RING_SWEEP_BLOCK_COUNT = 5
+SOLITON_RING_SWEEP_BLOCK_VERTICAL_SPACING = 700.0
+
+
+def build_spiral_sweep_panel() -> gf.Component:
+    panel = gf.Component("spiral_vortex_sweep_panel")
+
+    notch_categories = ("S", "C_in", "C_out")
+
+    def make_q_list(values: list[int]) -> list[list[int]]:
+        return [values[:] for _ in range(3)]
+
+    spiral_blocks = [
+        {
+            "base_y": 5000.0,
+            "x_offset": 74.4,
+            "y_offset": 74.0,
+            "loops": [1, 1, 1],
+            "q_values": make_q_list([331, 332, 333, 334, 335]),
+            "w_notch": {"S": 0.25, "C_in": 0.25, "C_out": 0.25},
+            "variable": [False, False, False],
+        },
+        {
+            "base_y": 5000.0 - SPIRAL_BLOCK_SEPARATION,
+            "x_offset": 74.4,
+            "y_offset": 74.0,
+            "loops": [1, 1, 1],
+            "q_values": make_q_list([331, 332, 333, 334, 335]),
+            "w_notch": {"S": 0.3, "C_in": 0.3, "C_out": 0.3},
+            "variable": [True, True, True],
+        },
+        {
+            "base_y": 5000.0 - 2 * SPIRAL_BLOCK_SEPARATION,
+            "x_offset": 71.4,
+            "y_offset": 71.0,
+            "loops": [2, 2, 2],
+            "q_values": make_q_list([649, 649, 649, 649, 649]),
+            "w_notch": {"S": 0.25, "C_in": 0.25, "C_out": 0.3},
+            "variable": [False, False, False],
+        },
+        {
+            "base_y": 5000.0 - 3 * SPIRAL_BLOCK_SEPARATION,
+            "x_offset": 68.4,
+            "y_offset": 68.0,
+            "loops": [3, 3, 3],
+            "q_values": make_q_list([953, 953, 953, 953, 953]),
+            "w_notch": {"S": 0.25, "C_in": 0.25, "C_out": 0.3},
+            "variable": [False, False, False],
+        },
+    ]
+
+    x_step = 125.0
+
+    for block_index, block in enumerate(spiral_blocks):
+        for idx in range(15):
+            i = idx + 1
+            category = idx // 5
+            category_index = idx % 5
+            notch_type = notch_categories[category]
+            q_value = block["q_values"][category][category_index]
+            loops_spiral = block["loops"][category]
+            w_notch = block["w_notch"][notch_type]
+            variable = block["variable"][category]
+
+            spiral = panel.add_ref(
+                TAUdevices.spiral_vortex_beam_emitter_equal_arc_spacing_AC(
+                    q=q_value,
+                    W_notch=w_notch,
+                    notch_type=notch_type,
+                    variable_pillar_dist=variable,
+                    loops_spiral=loops_spiral,
+                )
+            )
+            spiral.drotate(270)
+            target_center_x = (i + 1) * x_step - block["x_offset"]
+            base_center_y = block["base_y"] - block["y_offset"]
+
+            spiral.dmovex(target_center_x - spiral.center[0])
+            spiral.dmovey(base_center_y - spiral.center[1])
+
+            if "o1" in spiral.ports:
+                desired_port_y = base_center_y - (i - 1) * RING_VORTEX_PORT_PITCH
+                current_port_y = spiral.ports["o1"].center[1]
+                spiral.dmovey(desired_port_y - current_port_y)
+            port_name = f"sp_b{block_index}_i{idx+1}"
+            panel.add_port(name=port_name, port=spiral.ports["o1"])
+
+    return panel
+
+
+def build_ring_vortex_sweep(
+    coupler_x_position: float,
+    routing_roc: float,
+) -> gf.Component:
+    panel = gf.Component("ring_vortex_sweep_panel")
+
+    routing_bend = partial(
+        gf.components.bend_euler,
+        radius=routing_roc,
+        with_arc_floorplan=True,
+        cross_section="xs_rwg900",
+    )
+
+    total_columns = len(RING_VORTEX_SWEEP_GAPS)
+
+    for row, q_value in enumerate(RING_VORTEX_SWEEP_Q_VALUES):
+        base_center_y = -row * RING_VORTEX_SWEEP_ROW_PITCH
+        for col, gap in enumerate(RING_VORTEX_SWEEP_GAPS):
+            ring = panel.add_ref(
+                TAUdevices.ring_vortex_beam_emitter_AC(
+                    q=q_value,
+                    W_gap=gap,
+                    notch_type="C_in",
+                )
+            )
+            ring.drotate(180)
+            target_center_x = col * RING_VORTEX_SWEEP_COL_PITCH
+            ring.dmovex(target_center_x - ring.center[0])
+            ring.dmovey(base_center_y - ring.center[1])
+
+            in_port = ring.ports["o1"] if "o1" in ring.ports else None
+            if in_port is not None:
+                desired_port_y = base_center_y + col * RING_VORTEX_PORT_PITCH
+                current_port_y = in_port.center[1]
+                ring.dmovey(desired_port_y - current_port_y)
+                in_port = ring.ports["o1"]
+
+                input_coupler = panel << EDGE_COUPLER
+                input_coupler.drotate(0)
+                input_coupler.dmove(
+                    input_coupler.ports["o1"].dcenter,
+                    (coupler_x_position, in_port.center[1]),
+                )
+
+                gf.routing.route_single(
+                    panel,
+                    port1=input_coupler.ports["o2"],
+                    port2=in_port,
+                    cross_section="xs_rwg900",
+                    bend=routing_bend,
+                    radius=routing_roc,
+                    straight="straight_rwg900",
+                    allow_width_mismatch=True,
+                )
+
+            out_port = ring.ports["o2"] if "o2" in ring.ports else None
+            if out_port is not None:
+                ring_index = row * total_columns + col
+                y_secondary = (
+                    (in_port.center[1] if in_port is not None else out_port.center[1])
+                    - 110.0
+                    - (ring_index % 8) * 2 * RING_VORTEX_PORT_PITCH
+                )
+
+                output_coupler = panel << EDGE_COUPLER
+                output_coupler.drotate(0)
+                output_coupler.dmove(
+                    output_coupler.ports["o1"].dcenter,
+                    (coupler_x_position, y_secondary),
+                )
+
+                gf.routing.route_single(
+                    panel,
+                    port1=output_coupler.ports["o2"],
+                    port2=out_port,
+                    cross_section="xs_rwg900",
+                    bend=routing_bend,
+                    radius=routing_roc,
+                    straight="straight_rwg900",
+                    allow_width_mismatch=True,
+                )
+
+    return panel
 
 # -----------------------------------------------------------------------------
 # Instantiate the three devices (single copies)
@@ -111,9 +311,187 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
     am_ref = place_and_center(AM, y_positions[1], "AM_MLL_cavity_AQ")
     tz_ref = place_and_center(TZ, y_positions[2], "tunable_mzm_laser_Redwan")
 
+    # Spiral emitter sweep panel
+    spiral_panel = build_spiral_sweep_panel()
+    panel_ref = c << spiral_panel
+    panel_width = panel_ref.dxmax - panel_ref.dxmin
+    panel_height = panel_ref.dymax - panel_ref.dymin
+    panel_ref.dmovex(W / 2 - panel_width / 2 + SPIRAL_SWEEP_OFFSET[0])
+    panel_ref.dmovey(H / 2 - panel_height / 2 + SPIRAL_SWEEP_OFFSET[1])
+    c.add_label(
+        text="spiral_vortex_sweep_panel",
+        position=(panel_ref.center[0], panel_ref.center[1] + 60),
+        layer=(66, 0),
+    )
+
+    left_facet_x = chip_layout.dxmin
+    spiral_bend = partial(
+        gf.components.bend_euler,
+        radius=routing_roc,
+        with_arc_floorplan=True,
+        cross_section="xs_rwg900",
+    )
+    spiral_straight = partial(
+        gf.components.straight,
+        cross_section="xs_rwg900",
+    )
+    taper_component = gf.components.taper_cross_section(
+        cross_section1="xs_rwg800",
+        cross_section2="xs_rwg900",
+        length=50.0,
+        linear=True,
+    )
+
+    def route_spiral_ports_to_left(ref: gf.ComponentReference) -> None:
+        if not ref.ports:
+            return
+        for port in list(ref.ports):
+            taper_ref = c << taper_component
+            taper_ref.connect("o1", port)
+
+            coupler_ref = c << EDGE_COUPLER
+            coupler_ref.drotate(0)
+            coupler_ref.dmove(
+                coupler_ref.ports["o1"].dcenter,
+                (left_facet_x - input_ext, port.center[1]),
+            )
+
+            path = gf.Path([taper_ref.ports["o2"].center, coupler_ref.ports["o2"].center])
+            c << path.extrude(cross_section="xs_rwg900")
+
+    route_spiral_ports_to_left(panel_ref)
+
+    # Place ring vortex sweep panel 
+    coupler_x_local = (left_facet_x - input_ext) - RING_VORTEX_SWEEP_OFFSET[0]
+    ring_panel = build_ring_vortex_sweep(
+        coupler_x_position=coupler_x_local,
+        routing_roc=routing_roc,
+    )
+    ring_panel_ref = c << ring_panel
+    ring_panel_ref.dmovex(RING_VORTEX_SWEEP_OFFSET[0])
+    ring_panel_ref.dmovey(RING_VORTEX_SWEEP_OFFSET[1])
+
+    # Soliton ring sweep (by coupling gap)
+    soliton_gaps = list(SOLITON_RING_SWEEP_GAPS)
+
+    if soliton_gaps:
+        base_x = W / 2 + SOLITON_RING_SWEEP_OFFSET[0]
+        base_y = H / 2 + SOLITON_RING_SWEEP_OFFSET[1]
+        soliton_refs: list[tuple[float, gf.ComponentReference]] = []
+        for block_idx in range(SOLITON_RING_SWEEP_BLOCK_COUNT):
+            block_base_y = base_y + block_idx * SOLITON_RING_SWEEP_BLOCK_VERTICAL_SPACING
+            for idx, gap_value in enumerate(soliton_gaps):
+                ring_component = TAUdevices.soliton_ring_Redwan(coupling_gap=gap_value)
+                ring_ref = c << ring_component
+                target_x = base_x + idx * SOLITON_RING_SWEEP_HORIZONTAL_PITCH
+                target_y = block_base_y + idx * SOLITON_RING_SWEEP_VERTICAL_PITCH
+                origin_center = ring_ref.center
+                ring_ref.dmovex(target_x - origin_center[0])
+                ring_ref.dmovey(target_y - origin_center[1])
+                current_center = ring_ref.center
+                c.add_label(
+                    text=f"soliton_ring_Redwan_gap_{gap_value:.2f}_b{block_idx}",
+                    position=(current_center[0], current_center[1] + 60),
+                    layer=(66, 0),
+                )
+                soliton_refs.append((gap_value, ring_ref, block_idx, idx))
+
+        right_facet_x = chip_layout.dxmax
+        ring_bend = partial(
+            gf.components.bend_euler,
+            radius=routing_roc,
+            with_arc_floorplan=True,
+            cross_section="xs_rwg900",
+        )
+        ring_straight = partial(
+            gf.components.straight,
+            cross_section="xs_rwg900",
+        )
+        taper_ring_component = gf.components.taper_cross_section(
+            cross_section1="xs_rwg2000",
+            cross_section2="xs_rwg900",
+            length=50.0,
+            linear=True,
+        )
+        for gap_value, ring_ref, block_idx, gap_idx in soliton_refs:
+            if "o1" not in ring_ref.ports:
+                continue
+            ring_port = ring_ref.ports["o1"]
+            taper_ref = c << taper_ring_component
+            taper_ref.connect("o1", ring_port)
+            coupler_ref = c << EDGE_COUPLER
+            coupler_ref.drotate(180)
+            taper_out_center = taper_ref.ports["o2"].center
+            x_west = taper_out_center[0] - 50.0
+            y_west = taper_out_center[1]
+            y_north = y_west + 500.0  + (6 - 2 * gap_idx) * SOLITON_RING_SWEEP_VERTICAL_PITCH
+            coupler_ref.dmove(
+                coupler_ref.ports["o1"].dcenter,
+                (right_facet_x + input_ext, y_north),
+            )
+            waypoints = [
+                (x_west, y_north),
+                (x_west, y_west),
+            ]
+            gf.routing.route_single(
+                c,
+                port1=coupler_ref.ports["o2"],
+                port2=taper_ref.ports["o2"],
+                cross_section="xs_rwg900",
+                bend=ring_bend,
+                radius=routing_roc,
+                straight=ring_straight,
+                waypoints=waypoints,
+            )
+
+            # Route the right-most port to a right-facet edge coupler
+            if "o2" in ring_ref.ports:
+                right_port = ring_ref.ports["o2"]
+                taper_right = c << taper_ring_component
+                taper_right.connect("o1", right_port)
+                coupler_right = c << EDGE_COUPLER
+                coupler_right.drotate(180)
+                coupler_right.dmove(
+                    coupler_right.ports["o1"].dcenter,
+                    (right_facet_x + input_ext, right_port.center[1]),
+                )
+                gf.routing.route_single(
+                    c,
+                    port1=coupler_right.ports["o2"],
+                    port2=taper_right.ports["o2"],
+                    cross_section="xs_rwg900",
+                    bend=ring_bend,
+                    radius=routing_roc,
+                    straight=ring_straight,
+                )
+
     # ------------------------------------------------------------------
     # EDGE COUPLERS AND ROUTING
     # ------------------------------------------------------------------
+    if "o1" in tz_ref.ports:
+        tz_output_port = tz_ref.ports["o1"]
+        tz_ec_top = c << gf.get_component(
+            "double_linear_inverse_taper",
+            input_ext=input_ext,
+            cross_section_end="xs_rwg2000",
+        )
+        tz_ec_top.drotate(-90)
+        top_facet_y = chip_layout.ymax + input_ext
+        tz_ec_top_x = tz_output_port.center[0] - routing_roc
+        tz_ec_top.dmove(
+            tz_ec_top.ports["o1"].dcenter,
+            (tz_ec_top_x, top_facet_y),
+        )
+        gf.routing.route_single(
+            c,
+            port1=tz_ec_top.ports["o2"],
+            port2=tz_output_port,
+            cross_section="xs_rwg2000",
+            bend=routing_bend,
+            radius=routing_roc,
+            straight="straight_rwg2000",
+        )
+
     return c
 
 # --- Build, FLATTEN, and write ----------------------------------------------

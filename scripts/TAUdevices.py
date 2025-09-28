@@ -5,10 +5,12 @@ import sys
 from pathlib import Path
 
 import gdsfactory as gf
+import gdsfactory.path as gp
 import lnoi400
 from gplugins.common.config import PATH
 from gdsfactory.typings import CrossSectionSpec, ComponentSpec
 import numpy as np
+import math
 
 if __package__:
     from . import components as orc_components
@@ -315,10 +317,9 @@ def tunable_mzm_laser_Redwan():
 
     return c
 
-
 @gf.cell
 
-def soliton_ring_Redwan():
+def soliton_ring_Redwan(coupling_gap: float = 2.0):
     """
     Creates the soliton ring resonator by calling the concentric rings component.
 
@@ -327,11 +328,354 @@ def soliton_ring_Redwan():
     """
     # Call the component from the 'components' file, passing the specified gap.
     # The other parameters will use their default values.
-    coupling_gap: float = 2.0
-
     c = orc_components.concentric_rings_with_bus(
         coupling_gap_bus=coupling_gap
     )
     return c
 
 ##################################################################################### End: Redwan Islam
+
+
+#####################################################################################
+# Ring Vortex Beam Emitter with Notches: Andrea Caruso (adapted for LNOI400 PDK)
+#####################################################################################
+@gf.cell
+def ring_vortex_beam_emitter_AC(
+    q: int = 338,
+    R_ring: float = 50.0,
+    W_wg: float = 0.8,
+    W_gap: float = 0.3,
+    W_notch: float = 0.25,
+    notch_type: str = "S",
+    resolution: float = 0.1,
+    show_ports: bool = False,
+    layer: tuple[int, int] | object = LAYER.LN_RIDGE,
+    cross_section: CrossSectionSpec = "xs_rwg800",
+) -> gf.Component:
+    """Microring resonator with rectangular or circular notches.
+
+    Args:
+        q: Number of notches distributed along the ring perimeter.
+        R_ring: Ring radius measured on the waveguide centerline (µm).
+        W_wg: Bus and ring waveguide width (µm). Must match the chosen cross section.
+        W_gap: Coupling gap between ring and bus waveguide (µm).
+        W_notch: Width/diameter of each notch (µm).
+        notch_type: "S" for rectangular slot, "C_in" for circular intrusion.
+        resolution: Angular resolution used when discretizing the ring (deg per segment).
+        show_ports: If True, draw port markers on the resulting component.
+        layer: Target GDS layer/datatype for auxiliary geometries (defaults to LN_RIDGE).
+        cross_section: PDK cross section for the ring and bus waveguides.
+    """
+
+    if q <= 0:
+        raise ValueError("q must be a positive integer")
+    if W_notch <= 0:
+        raise ValueError("W_notch must be > 0")
+
+    layer_tuple: tuple[int, int]
+    if isinstance(layer, tuple):
+        layer_tuple = layer
+    elif hasattr(layer, "layer") and hasattr(layer, "datatype"):
+        layer_tuple = (layer.layer, layer.datatype)
+    elif isinstance(layer, str) and hasattr(LAYER, layer):
+        layer_enum = getattr(LAYER, layer)
+        layer_tuple = (layer_enum.layer, layer_enum.datatype)
+    else:
+        raise ValueError("layer must be provided as a tuple or known key in LAYER")
+
+    xs = gf.get_cross_section(cross_section)
+    xs_width = xs.width
+    if abs(xs_width - W_wg) > 1e-3:
+        raise ValueError(
+            f"Cross-section width {xs_width} µm does not match W_wg={W_wg} µm. "
+            "Add the appropriate cross-section to the PDK or adjust W_wg."
+        )
+
+    component = gf.Component(name="ring_vortex_beam_emitter_AC")
+
+    # Build the microring by extruding the cross section along a circular path
+    npoints = max(16, int(math.ceil(360.0 / resolution))) if resolution > 0 else 3600
+    ring_path = gp.arc(radius=R_ring, angle=360, npoints=npoints)
+    ring = gp.extrude(ring_path, cross_section=xs)
+    ring_ref = component << ring
+    ring_ref.center = (0.0, 0.0)
+
+    rad_step = 2 * math.pi / q
+    grid = 0.001  # µm grid assumed by layout
+
+    def snap(value: float) -> float:
+        return round(value / grid) * grid
+
+    W_margin = snap(0.25 * W_notch)
+    notch_width = snap(W_notch)
+    notch_length = snap(W_notch + W_margin)
+
+    notch_rect = gf.components.rectangle(
+        size=(notch_length, notch_width),
+        layer=layer_tuple,
+        centered=True,
+    )
+    circle_layer = (layer_tuple[0], layer_tuple[1] + 1)
+    notch_circle = gf.components.circle(
+        radius=notch_width / 2,
+        angle_resolution=2.5,
+        layer=circle_layer,
+    )
+
+    for i in range(q):
+        angle_rad = i * rad_step
+        angle_deg = math.degrees(angle_rad)
+
+        if notch_type == "S":
+            notch_ref = component.add_ref(notch_rect)
+            notch_ref.drotate(angle_deg)
+            R_i = R_ring - notch_width - W_wg / 2
+            notch_ref.dmove((snap(R_i * math.cos(angle_rad)), snap(R_i * math.sin(angle_rad))))
+        elif notch_type == "C_in":
+            notch_ref = component.add_ref(notch_circle)
+            notch_ref.drotate(angle_deg)
+            R_i = R_ring - notch_width / 2 - snap(0.3) - W_wg / 2
+            notch_ref.dmove((snap(R_i * math.cos(angle_rad)), snap(R_i * math.sin(angle_rad))))
+        else:
+            raise ValueError("Unsupported notch_type. Use 'S' or 'C_in'.")
+
+    bus_length = 2 * R_ring + W_wg
+    bus = gf.components.straight(length=bus_length, cross_section=xs)
+    bus_ref = component.add_ref(bus)
+    bus_ref.dmovex(-bus_length / 2)
+    bus_ref.dmovey(snap(-(R_ring + W_gap + W_wg)))
+
+    o1_port = bus_ref.ports["o2"]
+    o2_port = bus_ref.ports["o1"]
+
+    component.flatten()
+
+    component.add_port(
+        "o1",
+        center=(snap(o1_port.center[0]), snap(o1_port.center[1])),
+        width=o1_port.width,
+        orientation=o1_port.orientation,
+        layer=o1_port.layer,
+    )
+    component.add_port(
+        "o2",
+        center=(snap(o2_port.center[0]), snap(o2_port.center[1])),
+        width=o2_port.width,
+        orientation=o2_port.orientation,
+        layer=o2_port.layer,
+    )
+
+    if show_ports:
+        component.draw_ports()
+
+    return component
+
+
+#####################################################################################
+# Archimedean Spiral Vortex Beam Emitter: Andrea Caruso (adapted for LNOI400 PDK)
+#####################################################################################
+@gf.cell
+def spiral_vortex_beam_emitter_equal_arc_spacing_AC(
+    q: int = 331,
+    W_spiral: float = 0.8,
+    W_notch: float = 0.25,
+    notch_type: str = "S",
+    variable_pillar_dist: bool = False,
+    loops_spiral: int = 1,
+    loops_tail: int = 1,
+    R_sep: float = 3.0,
+    R_min: float = 48.0,
+    direction: str = "R",
+    resolution: int = 1000,
+    layer: tuple[int, int] | object = LAYER.LN_RIDGE,
+    show_ports: bool = False,
+    cross_section: CrossSectionSpec = "xs_rwg800",
+) -> gf.Component:
+    """Archimedean spiral vortex beam emitter compatible with the LNOI400 PDK."""
+
+    if q <= 0:
+        raise ValueError("q must be a positive integer")
+    if loops_spiral <= 0 or loops_tail < 0:
+        raise ValueError("loops_spiral must be > 0 and loops_tail >= 0")
+    if R_sep <= 0 or R_min <= 0:
+        raise ValueError("R_sep and R_min must be positive")
+    if resolution < 4:
+        raise ValueError("resolution must be >= 4 to resolve the spiral path")
+
+    layer_tuple: tuple[int, int]
+    if isinstance(layer, tuple):
+        layer_tuple = layer
+    elif hasattr(layer, "layer") and hasattr(layer, "datatype"):
+        layer_tuple = (layer.layer, layer.datatype)
+    elif isinstance(layer, str) and hasattr(LAYER, layer):
+        layer_enum = getattr(LAYER, layer)
+        layer_tuple = (layer_enum.layer, layer_enum.datatype)
+    else:
+        raise ValueError("layer must be provided as a tuple or known key in LAYER")
+
+    xs_main = gf.get_cross_section(cross_section, width=W_spiral)
+    if abs(xs_main.width - W_spiral) > 1e-3:
+        raise ValueError(
+            f"Cross-section width {xs_main.width} µm does not match W_spiral={W_spiral} µm."
+        )
+
+    grid = 0.001
+
+    def snap(value: float) -> float:
+        return round(value / grid) * grid
+
+    def equal_arc_spiral(a: float, r0: float, theta_max: float, samples: int) -> tuple[np.ndarray, np.ndarray, float]:
+        samples = max(samples, int(q * 4))
+        theta_samples = np.linspace(0.0, theta_max, samples)
+        r_samples = a * theta_samples + r0
+        integrand = np.sqrt(a**2 + r_samples**2)
+        cumulative = np.concatenate(
+            (
+                [0.0],
+                np.cumsum(0.5 * (integrand[1:] + integrand[:-1]) * np.diff(theta_samples)),
+            )
+        )
+        total_length = float(cumulative[-1])
+        targets = np.linspace(0.0, total_length, q + 1)
+        theta_values = np.interp(targets, cumulative, theta_samples)
+        radii_values = a * theta_values + r0
+        return theta_values, radii_values, total_length
+
+    def taper_spiral_waveguide(
+        separation: float,
+        width_in: float,
+        width_tip: float,
+        number_of_loops: int,
+        min_bend_radius: float,
+        npoints: int,
+        taper: str = "linear",
+    ) -> gf.Component:
+        if min_bend_radius <= 0:
+            raise ValueError("min_bend_radius must be positive for the taper spiral")
+        xs_in = gf.get_cross_section(cross_section, width=width_in)
+        xs_tip = gf.get_cross_section(cross_section, width=width_tip)
+        xs_transition = gp.transition(cross_section1=xs_tip, cross_section2=xs_in, width_type=taper)
+        path = gp.spiral_archimedean(
+            min_bend_radius=min_bend_radius,
+            separation=separation / 2,
+            number_of_loops=number_of_loops,
+            npoints=npoints,
+        )
+        path.start_angle = 0
+        path.end_angle = 0
+        return gp.extrude_transition(path, xs_transition)
+
+    L_in = R_min + loops_spiral * R_sep - W_spiral / 2
+    if L_in <= 0:
+        raise ValueError("Computed input straight length is non-positive; adjust R_min or loops_spiral")
+
+    component = gf.Component(name="spiral_vortex_beam_emitter_equal_arc_spacing_AC")
+
+    spiral_ref = component.add_ref(
+        taper_spiral_waveguide(
+            separation=R_sep,
+            width_in=W_spiral,
+            width_tip=W_spiral,
+            number_of_loops=loops_spiral,
+            min_bend_radius=R_min,
+            npoints=resolution,
+        )
+    )
+    spiral_ref.drotate(270)
+
+    a = -R_sep / (2 * np.pi)
+    r0 = R_min + loops_spiral * R_sep
+    theta_max = loops_spiral * 2 * np.pi
+    theta_values, radii_values, _ = equal_arc_spiral(a, r0, theta_max, resolution)
+
+    W_margin = snap(0.25 * W_notch)
+    notch_width = snap(W_notch)
+    notch_length = snap(W_notch + W_margin)
+
+    notch_rect = gf.components.rectangle(size=(notch_length, notch_width), layer=layer_tuple, centered=True)
+    circle_layer = (layer_tuple[0], layer_tuple[1] + 1)
+    notch_circle = gf.components.circle(radius=notch_width / 2, angle_resolution=2.5, layer=circle_layer)
+
+    gap_i = 0.4
+
+    for theta, radius_at_spot in zip(theta_values, radii_values):
+        angle_deg = math.degrees(theta)
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+
+        if notch_type == "S":
+            notch_ref = component << notch_rect
+            notch_ref.drotate(angle_deg)
+            radial_offset = radius_at_spot - notch_width - W_spiral / 2
+            notch_ref.dmovex(snap(radial_offset * cos_t))
+            notch_ref.dmovey(snap(radial_offset * sin_t))
+        elif notch_type == "C_in":
+            notch_ref = component << notch_circle
+            notch_ref.drotate(angle_deg)
+            radial_offset = radius_at_spot - notch_width / 2 - gap_i - W_spiral / 2
+            notch_ref.dmovex(snap(radial_offset * cos_t))
+            notch_ref.dmovey(snap(radial_offset * sin_t))
+            if variable_pillar_dist:
+                gap_i = gap_i - 0.1 * 1 / max(q, 1)
+        elif notch_type == "C_out":
+            notch_ref = component << notch_circle
+            notch_ref.drotate(angle_deg)
+            radial_offset = radius_at_spot + notch_width / 2 + gap_i + W_spiral / 2
+            notch_ref.dmovex(snap(radial_offset * cos_t))
+            notch_ref.dmovey(snap(radial_offset * sin_t))
+            if variable_pillar_dist:
+                gap_i = gap_i - 0.1 * 1 / max(q, 1)
+        else:
+            raise ValueError("Unsupported notch_type. Use 'S', 'C_in', or 'C_out'.")
+
+    if loops_tail:
+        tail_ref = component.add_ref(
+            taper_spiral_waveguide(
+                separation=5 * R_sep,
+                width_in=W_spiral,
+                width_tip=0.25,
+                number_of_loops=loops_tail,
+                min_bend_radius=R_min - loops_tail * 5 * R_sep,
+                npoints=resolution,
+            )
+        )
+        tail_ref.drotate(270)
+
+    component.rotate(360 / q)
+
+    R_max = R_min + loops_spiral * R_sep
+
+    arc_path = gp.arc(radius=R_max, angle=360 / q, npoints=max(16, int(resolution / max(q, 1))))
+    arc_component = gp.extrude(arc_path, cross_section=xs_main)
+    arc_ref = component.add_ref(arc_component)
+    arc_ref.drotate(90)
+    arc_ref.dmovex(R_max)
+
+    straight_ref = component.add_ref(gf.components.straight(length=L_in, cross_section=xs_main))
+    straight_ref.drotate(90)
+    straight_ref.dmovex(R_max)
+    straight_ref.dmovey(-L_in)
+
+    component.flatten()
+
+    handedness = direction.upper()
+    if handedness == "L":
+        component.mirror_x()
+        port_center = (snap(-R_max), snap(-L_in))
+    elif handedness == "R":
+        port_center = (snap(R_max), snap(-L_in))
+    else:
+        raise ValueError("direction must be either 'L' or 'R'")
+
+    component.add_port(
+        "o1",
+        center=port_center,
+        width=W_spiral,
+        orientation=270,
+        layer=layer_tuple,
+    )
+
+    if show_ports:
+        component.draw_ports()
+
+    return component
