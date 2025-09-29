@@ -75,4 +75,15 @@ def xs_rwg1380(
         layer=layer,
         sections=sections,
     )
+
+@xsection
+def xs_swg4000(
+    layer: LayerSpec = "LN_SLAB",
+    width: float = 4.0,
+) -> CrossSection:
+    return gf.cross_section.strip(
+        width=width,
+        layer=layer,
+    )
+
 ## Done- ORC

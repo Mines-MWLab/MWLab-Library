@@ -948,6 +948,142 @@ def tilted_inverse_taper_AQ(
     c.flatten()
     return c
 
+
+@gf.cell
+def double_linear_inverse_taper_AQ(
+    cross_section_start: CrossSectionSpec = "xs_swg4000",
+    cross_section_end: CrossSectionSpec = "xs_rwg2000",
+    lower_taper_length: float = 25.0,
+    lower_taper_end_width: float = 18.0,
+    upper_taper_start_width: float = 0.5,
+    upper_taper_length: float = 50.0,
+    slab_removal_width: float = 20.0,
+    input_ext: float = 10.0,
+) -> gf.Component:
+    """Inverse taper with two layers, starting from a wire waveguide at the facet
+    and transitioning to a rib waveguide. The tapering profile is linear in both layers."""
+
+    lower_taper_start_width = gf.get_cross_section(cross_section_start).width
+    upper_taper_end_width = gf.get_cross_section(cross_section_end).width
+
+    xs_taper_lower_end = partial(
+        gf.cross_section.strip,
+        width=lower_taper_end_width,
+        layer="LN_SLAB",
+    )
+
+    xs_taper_upper_start = partial(
+        gf.cross_section.strip, layer=LAYER.LN_RIDGE, width=upper_taper_start_width
+    )
+
+    xs_taper_upper_end = partial(xs_taper_upper_start, width=upper_taper_end_width)
+
+    taper_lower = gf.components.taper_cross_section(
+        cross_section1=cross_section_start,
+        cross_section2=xs_taper_lower_end,
+        length=lower_taper_length + upper_taper_length,
+        linear=True,
+    )
+
+    taper_upper = gf.components.taper_cross_section(
+        cross_section1=xs_taper_upper_start,
+        cross_section2=xs_taper_upper_end,
+        length=upper_taper_length,
+        linear=True,
+    )
+
+    if input_ext:
+        straight_ext = gf.components.straight(
+            cross_section=cross_section_start,
+            length=input_ext,
+        )
+
+    # Place the two tapers on the different layers
+
+    double_taper = gf.Component()
+    if input_ext:
+        sref = double_taper << straight_ext
+        sref.dmovex(-input_ext)
+    ltref = double_taper << taper_lower
+    utref = double_taper << taper_upper
+    utref.dmovex(lower_taper_length)
+
+    # Define the input and output optical ports
+
+    double_taper.add_port(
+        port=sref.ports["o1"]
+    ) if input_ext else double_taper.add_port(port=ltref.ports["o1"])
+    double_taper.add_port(port=utref.ports["o2"])
+
+    # Place the tone inversion box for the slab etch
+
+    if slab_removal_width:
+        bn = gf.components.rectangle(
+            size=(
+                double_taper.ports["o2"].dcenter[0]
+                - double_taper.ports["o1"].dcenter[0],
+                slab_removal_width,
+            ),
+            centered=True,
+            layer=LAYER.SLAB_NEGATIVE,
+        )
+        bnref = double_taper << bn
+        bnref.dmovex(
+            origin=bnref.dxmin,
+            destination=-input_ext,
+        )
+    double_taper.flatten()
+
+    return double_taper
+
+
+@gf.cell
+def tilted_DL_inverse_taper_AQ(
+    angle: float = 16.86,
+    bend_radius: float = 100.0,
+    cross_section_start: CrossSectionSpec = "xs_swg4000",
+    cross_section_end: CrossSectionSpec = "xs_rwg2000",
+    input_ext: float = 10.0,
+) -> gf.Component:
+    """
+    Creates a taper tilted at a specific angle, followed by a corrective
+    Euler bend to straighten the path.
+    """
+    c = gf.Component()
+
+    # 1. Create the taper component
+    taper = double_linear_inverse_taper_AQ(
+        cross_section_start=cross_section_start,
+        cross_section_end=cross_section_end,
+        input_ext=input_ext,
+    )
+
+    # 2. Create the corrective bend. It bends by -angle degrees.
+    corrective_bend = gf.components.bend_euler(
+        radius=bend_radius,
+        angle=-angle,
+        cross_section=cross_section_end,
+    )
+
+    # 3. Add references to the components
+    taper_ref = c << taper
+    bend_ref = c << corrective_bend
+
+    # 4. Rotate the taper to the desired angle
+    taper_ref.rotate(angle)
+
+    # 5. Connect the bend to the taper's output port.
+    # The connect() function will automatically rotate and move the bend
+    # so that its 'o1' port aligns with the taper's angled 'o2' port.
+    bend_ref.connect("o1", taper_ref.ports["o2"])
+
+    # 6. Expose the ports of the new composite component
+    c.add_port("o1", port=taper_ref.ports["o1"])
+    c.add_port("o2", port=bend_ref.ports["o2"])
+
+    c.flatten()
+    return c
+
 ##################################################################################### End: AQ
 
 

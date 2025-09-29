@@ -57,11 +57,11 @@ def PM_MLL_cavity_AQ():
     splitter = orc_components.custom_mmi_AQ()
     mirror = orc_components.loop_mirror_AQ(splitter='custom_mmi', cross_section='xs_rwg2000')
 
-    # input_ext = 10.0
-    # edge_coupler = orc_components.tilted_inverse_taper_AQ(
-    #                             input_ext=input_ext,
-    #                             angle = 16.4,
-    #                             )
+    input_ext = 10.0
+    edge_coupler = orc_components.tilted_DL_inverse_taper_AQ(
+                                input_ext=input_ext,
+                                angle = 16.86,
+                                )
     st_wg = orc_components.straight_rwg2000(
         length = 210
     )
@@ -110,15 +110,14 @@ def AM_MLL_cavity_AQ():
 
 
     #define subcomponents
-    splitter = orc_components.custom_mmi_AQ()
     mirror = orc_components.loop_mirror_AQ(splitter='custom_mmi_AQ', cross_section='xs_rwg2000')
     mzm = orc_components.mzm_custom_AQ(modulation_length=8540)
 
-    # input_ext = 10.0
-    # edge_coupler = orc_components.tilted_inverse_taper_AQ(
-    #                             input_ext=input_ext,
-    #                             angle = 16.4,
-    #                             )
+    input_ext = 10.0
+    edge_coupler = orc_components.tilted_DL_inverse_taper_AQ(
+                                input_ext=input_ext,
+                                angle = 16.86,
+                                )
 
     st_wg = orc_components.straight_rwg2000(
         length = 10
