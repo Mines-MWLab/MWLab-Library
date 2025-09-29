@@ -58,20 +58,20 @@ MIN_SPACING = 490.0  # um
 DEVICE_OFFSETS = {
     "PM_MLL_cavity_AQ": (0.0, -150.0),
     "AM_MLL_cavity_AQ": (0.0, -150.0),
-    "tunable_mzm_laser_Redwan": (750.0, -100.0),
+    "tunable_mzm_laser_Redwan": (770.0, -100.0),
     "soliton_ring_Redwan": (2000.0, 0.0),
 }
 
 # optional sweep panel global offset (dx, dy) in microns
-SPIRAL_SWEEP_OFFSET = (-4000.0, -3400.0)
+SPIRAL_SWEEP_OFFSET = (-4000.0, -3500.0)
 SPIRAL_BLOCK_SEPARATION = 500.0
 SPIRAL_VORTEX_PORT_PITCH = 25.0
 
 RING_VORTEX_PORT_PITCH = 125.0
-RING_VORTEX_SWEEP_OFFSET = (500.0, 3500.0)
-RING_VORTEX_SWEEP_Q_VALUES = [336]  # top to bottom
-RING_VORTEX_SWEEP_GAPS = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65]  
-RING_VORTEX_SWEEP_ROW_PITCH = 485.0
+RING_VORTEX_SWEEP_OFFSET = (300.0, 4300.0)
+RING_VORTEX_SWEEP_Q_VALUES = [336, 338, 340]  # top to bottom
+RING_VORTEX_SWEEP_GAPS = [0.30, 0.40, 0.50, 0.60]   
+RING_VORTEX_SWEEP_ROW_PITCH = 500.0
 RING_VORTEX_SWEEP_COL_PITCH = 125.0
 
 # soliton ring sweep configuration
@@ -195,13 +195,13 @@ def build_ring_vortex_sweep(
                 )
             )
             ring.drotate(180)
-            target_center_x = col * RING_VORTEX_SWEEP_COL_PITCH
+            target_center_x = col * RING_VORTEX_SWEEP_COL_PITCH + row * 4 * RING_VORTEX_SWEEP_COL_PITCH
             ring.dmovex(target_center_x - ring.center[0])
             ring.dmovey(base_center_y - ring.center[1])
 
             in_port = ring.ports["o1"] if "o1" in ring.ports else None
             if in_port is not None:
-                desired_port_y = base_center_y + (7 - col) * RING_VORTEX_PORT_PITCH
+                desired_port_y = base_center_y + (3 - col) * RING_VORTEX_PORT_PITCH
                 current_port_y = in_port.center[1]
                 ring.dmovey(desired_port_y - current_port_y)
                 in_port = ring.ports["o1"]
@@ -213,15 +213,24 @@ def build_ring_vortex_sweep(
                     (coupler_x_position, in_port.center[1]),
                 )
 
+                in_taper = panel.add_ref(
+                    gf.components.taper_cross_section(
+                        cross_section1="xs_rwg900",
+                        cross_section2="xs_rwg800",
+                        length=100.0,
+                        linear=True,
+                    )
+                )
+                in_taper.connect("o1", input_coupler.ports["o2"])
+
                 gf.routing.route_single(
                     panel,
-                    port1=input_coupler.ports["o2"],
+                    port1=in_taper.ports["o2"],
                     port2=in_port,
-                    cross_section="xs_rwg900",
+                    cross_section="xs_rwg800",
                     bend=routing_bend,
                     radius=routing_roc,
-                    straight="straight_rwg900",
-                    allow_width_mismatch=True,
+                    straight="straight_rwg800"
                 )
 
             out_port = ring.ports["o2"] if "o2" in ring.ports else None
@@ -235,15 +244,24 @@ def build_ring_vortex_sweep(
                     (ring.ports["o2"].dcenter[0] + routing_roc, chip_layout.dymax + input_ext - RING_VORTEX_SWEEP_OFFSET[1]),
                 )
 
+                out_taper = panel.add_ref(
+                    gf.components.taper_cross_section(
+                        cross_section1="xs_rwg900",
+                        cross_section2="xs_rwg800",
+                        length=100.0,
+                        linear=True,
+                    )
+                )
+                out_taper.connect("o1", output_coupler.ports["o2"])
+
                 gf.routing.route_single(
                     panel,
-                    port1=output_coupler.ports["o2"],
+                    port1=out_taper.ports["o2"],
                     port2=out_port,
-                    cross_section="xs_rwg900",
+                    cross_section="xs_rwg800",
                     bend=routing_bend,
                     radius=routing_roc,
-                    straight="straight_rwg900",
-                    allow_width_mismatch=True,
+                    straight="straight_rwg800"
                 )
 
     return panel
