@@ -307,7 +307,7 @@ def tunable_mzm_laser_Redwan():
 
 @gf.cell
 
-def soliton_ring_Redwan(coupling_gap: float = 2.0):
+def soliton_ring_Redwan(coupling_gap: float = 2.0, gap_inner_outer: float = 6.3):
     """
     Creates the soliton ring resonator by calling the concentric rings component.
 
@@ -317,7 +317,8 @@ def soliton_ring_Redwan(coupling_gap: float = 2.0):
     # Call the component from the 'components' file, passing the specified gap.
     # The other parameters will use their default values.
     c = orc_components.concentric_rings_with_bus(
-        coupling_gap_bus=coupling_gap
+        coupling_gap_bus=coupling_gap,
+        gap_inner_outer = gap_inner_outer
     )
     return c
 
@@ -398,16 +399,16 @@ def ring_vortex_beam_emitter_AC(
     notch_width = snap(W_notch)
     notch_length = snap(W_notch + W_margin)
 
+    ridge_layer = LAYER.LN_RIDGE
     notch_rect = gf.components.rectangle(
         size=(notch_length, notch_width),
-        layer=layer_tuple,
+        layer=ridge_layer,
         centered=True,
     )
-    circle_layer = (layer_tuple[0], layer_tuple[1] + 1)
     notch_circle = gf.components.circle(
         radius=notch_width / 2,
         angle_resolution=2.5,
-        layer=circle_layer,
+        layer=ridge_layer,
     )
 
     for i in range(q):
@@ -580,9 +581,9 @@ def spiral_vortex_beam_emitter_equal_arc_spacing_AC(
     notch_width = snap(W_notch)
     notch_length = snap(W_notch + W_margin)
 
-    notch_rect = gf.components.rectangle(size=(notch_length, notch_width), layer=layer_tuple, centered=True)
-    circle_layer = (layer_tuple[0], layer_tuple[1] + 1)
-    notch_circle = gf.components.circle(radius=notch_width / 2, angle_resolution=2.5, layer=circle_layer)
+    ridge_layer = LAYER.LN_RIDGE
+    notch_rect = gf.components.rectangle(size=(notch_length, notch_width), layer=ridge_layer, centered=True)
+    notch_circle = gf.components.circle(radius=notch_width / 2, angle_resolution=2.5, layer=ridge_layer)
 
     gap_i = 0.4
 

@@ -9,7 +9,7 @@ import sys, os
 # Repo root on path and constants
 # -----------------------------------------------------------------------------
 sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-from scripts import devices
+from scripts import devices, components
 
 gf.clear_cache()
 
@@ -23,6 +23,7 @@ EDGE_COUPLER_GDS = os.path.abspath(
 EDGE_COUPLER_CELL = None  # set to the actual cell name if the topcell isn't the coupler
 
 EDGE_COUPLER = gf.import_gds(EDGE_COUPLER_GDS, cellname=EDGE_COUPLER_CELL)
+EDGE_COUPLER_775 = components.double_taper_edge_coupler_JL()
 
 # -----------------------------------------------------------------------------
 # Utility
@@ -44,12 +45,13 @@ chip_layout = chip_frame()
 # -----------------------------------------------------------------------------
 # Global parameters
 # -----------------------------------------------------------------------------
-input_ext = 10.0
+input_ext = 5.0
 routing_roc = 50.0
 
 # Coupler cross-section is 0.9 µm
 COUPLER_CROSS_SECTION = "xs_rwg900"
-TAPER_LENGTH = 200.0
+COUPLER_CROSS_SECTION_775 = "xs_rwg2000"
+TAPER_LENGTH = 300.0
 
 # Spacing constraints
 MIN_SPACING_SAME = 490.0  # µm (same cross-section rows)
@@ -86,6 +88,16 @@ TRANSITION_TAPERS = [
     for cs in CROSS_SECTIONS
 ]
 
+TRANSITION_TAPERS_775 = [
+    gf.components.taper_cross_section(
+        cross_section1=COUPLER_CROSS_SECTION_775,
+        cross_section2=cs,
+        length=TAPER_LENGTH-200,
+        linear=True,
+    )
+    for cs in CROSS_SECTIONS
+]
+
 # Number of rows (waveguides) that keep the dual-input MMI variant.
 # We want 4 sets × 3 cross-section bands = 12 rows.
 ROWS_WITH_MMI = 12
@@ -112,7 +124,7 @@ def die_assembled_grouped(
     W_total = chip_layout.dxmax
 
     # Usable vertical range after top/bottom edge margins
-    y_min = edge_margin
+    y_min = edge_margin + 50.0
     y_max = H_total - edge_margin
     if y_max <= y_min:
         raise RuntimeError("Edge margins exceed chip height.")
@@ -166,6 +178,7 @@ def die_assembled_grouped(
             else OPA_STRAIGHTS_SINGLE[set_idx]
         )
         transition_taper = TRANSITION_TAPERS[set_idx]
+        transition_taper_775 = TRANSITION_TAPERS_775[set_idx]
         xs_name = CROSS_SECTIONS[set_idx]
         straight_name = STRAIGHT_NAMES[set_idx]
 
@@ -188,15 +201,21 @@ def die_assembled_grouped(
                 target_port = opa_ref.ports[target_port_name]
 
                 desired_y = target_port.center[1] + vertical_offset
-                clamped_y = min(max(desired_y, y_min), y_max)
-                effective_offset = clamped_y - target_port.center[1]
+                effective_offset = vertical_offset
 
-                ec = c << EDGE_COUPLER
+                if target_port_name == "in_top":
+                    coupler_component = EDGE_COUPLER_775
+                    taper_component = transition_taper_775
+                else:
+                    coupler_component = EDGE_COUPLER
+                    taper_component = transition_taper
+
+                ec = c << coupler_component
                 ec.dmove(
                     ec.ports["o1"].dcenter,
                     [-input_ext, target_port.center[1] + effective_offset],
                 )
-                taper = c << transition_taper
+                taper = c << taper_component
                 taper.connect("o1", ec.ports["o2"])
 
                 start_port = taper.ports["o2"]
@@ -215,6 +234,7 @@ def die_assembled_grouped(
                     port2=target_port,
                     bend_s=bend_factory,
                     cross_section=xs_name,
+                    allow_width_mismatch=True
                 )
                 return ec, taper
 
@@ -243,6 +263,7 @@ def die_assembled_grouped(
                     cross_section=xs_name,
                     bend=routing_bend,
                     straight=straight_name,
+                    allow_width_mismatch=True
                 )
 
         # output edge coupler + transition taper 
@@ -264,6 +285,7 @@ def die_assembled_grouped(
             cross_section=xs_name,
             bend=routing_bend,
             straight=straight_name,
+            allow_width_mismatch=True
         )
 
     return c

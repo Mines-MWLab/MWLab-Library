@@ -76,11 +76,11 @@ RING_VORTEX_SWEEP_ROW_PITCH = 500.0
 RING_VORTEX_SWEEP_COL_PITCH = 125.0
 
 # soliton ring sweep configuration
-SOLITON_RING_SWEEP_GAPS = [2.0, 2.5, 3.0]  # um
+SOLITON_RING_SWEEP_COUPLING_GAPS = [2.683, 2.803, 2.908, 3.048, 3.261]  # µm (2683–3261 nm)
+SOLITON_RING_SWEEP_INNER_OUTER_GAPS = [6.1, 6.3, 6.5]  # µm
 SOLITON_RING_SWEEP_OFFSET = (3104.5, -1000.0)
 SOLITON_RING_SWEEP_HORIZONTAL_PITCH = 600.0
 SOLITON_RING_SWEEP_VERTICAL_PITCH = 25.0
-SOLITON_RING_SWEEP_BLOCK_COUNT = 5
 SOLITON_RING_SWEEP_BLOCK_VERTICAL_SPACING = 650.0
 
 # NanoPh EO phase shifter placement offset (dx, dy) in microns
@@ -331,7 +331,6 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
         r = c << ref_comp
         r.dmovex(W / 2 - r.xsize / 2 + dx)
         r.dmovey(y + dy)
-        c.add_label(text=label, position=(r.center[0], r.center[1] + 60), layer=(66, 0))
         return r
 
     pm_ref = place_and_center(PM, y_positions[0], "PM_MLL_cavity_AQ")
@@ -480,25 +479,33 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
     ring_panel_ref.dmovex(RING_VORTEX_SWEEP_OFFSET[0])
     ring_panel_ref.dmovey(RING_VORTEX_SWEEP_OFFSET[1])
 
-    # Soliton ring sweep (by coupling gap)
-    soliton_gaps = list(SOLITON_RING_SWEEP_GAPS)
+    # Soliton ring sweep (coupling gap by row, inner/outer gap by column)
+    soliton_coupling_gaps = list(SOLITON_RING_SWEEP_COUPLING_GAPS)
+    soliton_inner_outer_gaps = list(SOLITON_RING_SWEEP_INNER_OUTER_GAPS)
 
-    if soliton_gaps:
+    if soliton_coupling_gaps and soliton_inner_outer_gaps:
         base_x = W / 2 + SOLITON_RING_SWEEP_OFFSET[0]
         base_y = H / 2 + SOLITON_RING_SWEEP_OFFSET[1]
-        soliton_refs: list[tuple[float, gf.ComponentReference]] = []
-        for block_idx in range(SOLITON_RING_SWEEP_BLOCK_COUNT):
-            block_base_y = base_y + block_idx * SOLITON_RING_SWEEP_BLOCK_VERTICAL_SPACING
-            for idx, gap_value in enumerate(soliton_gaps):
-                ring_component = TAUdevices.soliton_ring_Redwan(coupling_gap=gap_value)
+        soliton_refs: list[tuple[float, float, gf.ComponentReference, int, int]] = []
+        for row_idx, coupling_gap in enumerate(soliton_coupling_gaps):
+            block_base_y = base_y + row_idx * SOLITON_RING_SWEEP_BLOCK_VERTICAL_SPACING
+            for col_idx, inner_outer_gap in enumerate(soliton_inner_outer_gaps):
+                ring_component = TAUdevices.soliton_ring_Redwan(
+                    coupling_gap=coupling_gap,
+                    gap_inner_outer=inner_outer_gap,
+                )
                 ring_ref = c << ring_component
-                target_x = base_x + idx * SOLITON_RING_SWEEP_HORIZONTAL_PITCH
-                target_y = block_base_y + idx * SOLITON_RING_SWEEP_VERTICAL_PITCH
+                target_x = base_x + col_idx * SOLITON_RING_SWEEP_HORIZONTAL_PITCH
+                target_y = block_base_y + col_idx * SOLITON_RING_SWEEP_VERTICAL_PITCH
                 origin_center = ring_ref.center
                 ring_ref.dmovex(target_x - origin_center[0])
                 ring_ref.dmovey(target_y - origin_center[1])
-                current_center = ring_ref.center
-                soliton_refs.append((gap_value, ring_ref, block_idx, idx))
+                soliton_refs.append((coupling_gap, inner_outer_gap, ring_ref, row_idx, col_idx))
+                c.add_label(
+                    text=f"soliton_gap{coupling_gap:.3f}_io{inner_outer_gap:.1f}_r{row_idx}_c{col_idx}",
+                    position=(ring_ref.center[0], ring_ref.center[1] + 45),
+                    layer=(66, 0),
+                )
 
         top_facet_y = chip_layout.dymax
         right_facet_x = chip_layout.dxmax
@@ -519,7 +526,7 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
             linear=True,
         )
 
-        for gap_value, ring_ref, block_idx, gap_idx in soliton_refs:
+        for coupling_gap, inner_outer_gap, ring_ref, row_idx, col_idx in soliton_refs:
             if "o1" not in ring_ref.ports:
                 continue
             ring_port = ring_ref.ports["o1"]
@@ -532,7 +539,7 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
             coupler_ref.drotate(-90)
             taper_out_center = taper_ref.ports["o2"].center
             x_west_base = ring_port.center[0] - 100.0 
-            x_west = x_west_base - (gap_idx) * (SOLITON_RING_SWEEP_HORIZONTAL_PITCH - SOLITON_RING_SWEEP_VERTICAL_PITCH) - 3 * (4 - block_idx) * SOLITON_RING_SWEEP_VERTICAL_PITCH - 275
+            x_west = x_west_base - (col_idx) * (SOLITON_RING_SWEEP_HORIZONTAL_PITCH - SOLITON_RING_SWEEP_VERTICAL_PITCH) - 3 * (len(soliton_coupling_gaps) - 1 - row_idx) * SOLITON_RING_SWEEP_VERTICAL_PITCH - 275
             y_north = ring_port.center[1] + 500
             y_west = ring_port.center[1]
 
