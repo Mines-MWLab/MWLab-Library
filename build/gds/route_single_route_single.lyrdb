@@ -33,9 +33,9 @@
    <comment/>
    <image/>
    <values>
-    <value>text: 'Error while trying to place route from o1 to o1 at points (dbu): [7854500,4540000, 7854500,4185165, 7854500,4185165, 7854500,3685165, 7954500,3685165]'</value>
-    <value>text: 'Exception: distance between points 7854500,4185165 and 7854500,4185165 is too small to safely place bends pt.to_s()=\'7854500,4185165\', old_pt.to_s()=\'7854500,4185165\', pt.distance(old_pt)=0.0 &lt; b90r=20000'</value>
-    <value>polygon: (7853.5,3684.165;7853.5,4540;7855.5,4540;7855.5,3686.165;7954.5,3686.165;7954.5,3684.165)</value>
+    <value>text: 'Error while trying to place route from o1 to o1 at points (dbu): [7579500,4540000, 7579500,4583820, 7854500,4583820, 7854500,4083820, 7954500,4083820]'</value>
+    <value>text: 'Exception: distance between points 7579500,4540000 and 7579500,4583820 is too small to safely place bends pt.to_s()=\'7579500,4583820\', old_pt.to_s()=\'7579500,4540000\', pt.distance(old_pt)=43820.0 &lt; b90r=100000'</value>
+    <value>polygon: (7853.81,4083.13;7853.81,4583.13;7580.19,4583.13;7580.19,4540;7578.81,4540;7578.81,4584.51;7855.19,4584.51;7855.19,4084.51;7954.5,4084.51;7954.5,4083.13)</value>
    </values>
   </item>
  </items>

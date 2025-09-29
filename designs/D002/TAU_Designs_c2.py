@@ -57,20 +57,21 @@ MIN_SPACING = 490.0  # um
 # per-device manual placement tweaks (dx, dy) in microns
 DEVICE_OFFSETS = {
     "PM_MLL_cavity_AQ": (0.0, -150.0),
-    "AM_MLL_cavity_AQ": (0.0, -150.0),
+    "AM_MLL_cavity_AQ": (0.0, -200.0),
     "tunable_mzm_laser_Redwan": (770.0, -100.0),
     "soliton_ring_Redwan": (2000.0, 0.0),
 }
 
 # optional sweep panel global offset (dx, dy) in microns
-SPIRAL_SWEEP_OFFSET = (-4000.0, -3500.0)
+SPIRAL_SWEEP_OFFSET = (-4000.0, -3400.0)
 SPIRAL_BLOCK_SEPARATION = 500.0
 SPIRAL_VORTEX_PORT_PITCH = 25.0
 
 RING_VORTEX_PORT_PITCH = 125.0
 RING_VORTEX_SWEEP_OFFSET = (300.0, 4300.0)
 RING_VORTEX_SWEEP_Q_VALUES = [336, 338, 340]  # top to bottom
-RING_VORTEX_SWEEP_GAPS = [0.30, 0.40, 0.50, 0.60]   
+RING_VORTEX_SWEEP_GAPS = [0.30, 0.40, 0.50, 0.60]
+RING_VORTEX_SWEEP_COLUMN_COUNT = 12
 RING_VORTEX_SWEEP_ROW_PITCH = 500.0
 RING_VORTEX_SWEEP_COL_PITCH = 125.0
 
@@ -80,7 +81,10 @@ SOLITON_RING_SWEEP_OFFSET = (3104.5, -1000.0)
 SOLITON_RING_SWEEP_HORIZONTAL_PITCH = 600.0
 SOLITON_RING_SWEEP_VERTICAL_PITCH = 25.0
 SOLITON_RING_SWEEP_BLOCK_COUNT = 5
-SOLITON_RING_SWEEP_BLOCK_VERTICAL_SPACING = 600.0
+SOLITON_RING_SWEEP_BLOCK_VERTICAL_SPACING = 650.0
+
+# NanoPh EO phase shifter placement offset (dx, dy) in microns
+NANOPH_EO_PS_OFFSET = (0.0, 0.0)
 
 
 def build_spiral_sweep_panel() -> gf.Component:
@@ -272,6 +276,7 @@ def build_ring_vortex_sweep(
 PM = TAUdevices.PM_MLL_cavity_AQ()
 AM = TAUdevices.AM_MLL_cavity_AQ()
 TZ = TAUdevices.tunable_mzm_laser_Redwan()
+NANOPH_PS = TAUdevices.NanoPh_eo_phase_shifter()
 
 @gf.cell
 def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
@@ -375,6 +380,53 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
 
     route_spiral_ports_to_left(panel_ref)
 
+    # ------------------------------------------------------------------
+    # NANOPH EO PHASE SHIFTER
+    # ------------------------------------------------------------------
+    nanoph_ps_ref = c << NANOPH_PS
+    target_ps_x = W / 2.0 + NANOPH_EO_PS_OFFSET[0]
+    target_ps_y = H / 2.0 + NANOPH_EO_PS_OFFSET[1]
+    nanoph_ps_ref.dmovex(target_ps_x - nanoph_ps_ref.center[0])
+    nanoph_ps_ref.dmovey(target_ps_y - nanoph_ps_ref.center[1])
+    c.add_label(
+        text="NanoPh_eo_phase_shifter",
+        position=(nanoph_ps_ref.center[0], nanoph_ps_ref.center[1] + 60),
+        layer=(66, 0),
+    )
+
+    top_facet_y = chip_layout.ymax + input_ext
+    ps_bend = partial(
+        gf.components.bend_euler,
+        radius=routing_roc,
+        with_arc_floorplan=True,
+        cross_section="xs_rwg1000",
+    )
+
+    for port_name in ("o1", "o2"):
+        if port_name not in nanoph_ps_ref.ports:
+            continue
+        port = nanoph_ps_ref.ports[port_name]
+        coupler_ref = c << gf.get_component(
+            "double_linear_inverse_taper",
+            input_ext=input_ext,
+            cross_section_end="xs_rwg1000",
+        )
+        coupler_ref.drotate(-90)
+        coupler_ref.dmove(
+            coupler_ref.ports["o1"].dcenter,
+            (port.center[0], top_facet_y),
+        )
+
+        gf.routing.route_single(
+            c,
+            port1=coupler_ref.ports["o2"],
+            port2=port,
+            cross_section="xs_rwg1000",
+            bend=ps_bend,
+            radius=routing_roc,
+            straight="straight_rwg1000",
+        )
+
     # Place ring vortex sweep panel 
     coupler_x_local = (left_facet_x - input_ext) - RING_VORTEX_SWEEP_OFFSET[0]
     ring_panel = build_ring_vortex_sweep(
@@ -418,7 +470,7 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
             cross_section="xs_rwg900",
         )
         taper_ring_component = gf.components.taper_cross_section(
-            cross_section1="xs_rwg2000",
+            cross_section1="xs_rwg1380",
             cross_section2="xs_rwg900",
             length=350.0,
             linear=True,
@@ -452,7 +504,7 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
                 c,
                 port1=taper_ref.ports["o1"],
                 port2=ring_port,
-                cross_section="xs_rwg2000",
+                cross_section="xs_rwg1380",
                 bend=ring_bend,
                 radius=100.0,
                 straight=ring_straight,
@@ -474,7 +526,7 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
                     c,
                     port1=coupler_right.ports["o2"],
                     port2=taper_right.ports["o2"],
-                    cross_section="xs_rwg900",
+                    cross_section="xs_rwg1380",
                     bend=ring_bend,
                     radius=routing_roc,
                     straight=ring_straight,

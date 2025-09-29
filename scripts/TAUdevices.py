@@ -31,7 +31,7 @@ else:  # pragma: no cover - convenience for script execution
 from functools import partial
 import matplotlib.pyplot as plt
 from lnoi400.tech import LAYER, xs_uni_cpw
-from lnoi400.cells import uni_cpw_straight, S_bend_vert, L_turn_bend
+from lnoi400.cells import uni_cpw_straight, S_bend_vert, L_turn_bend, eo_phase_shifter
 from gdsfactory.routing import route_single_sbend
 from gdsfactory.routing import route_quad
 from lnoi400.spline import (
@@ -679,3 +679,39 @@ def spiral_vortex_beam_emitter_equal_arc_spacing_AC(
         component.draw_ports()
 
     return component
+
+
+@gf.cell
+def NanoPh_eo_phase_shifter(
+    modulation_length: float = 7500.0,
+    taper_length: float = 100.0,
+    rib_core_width_modulator: float = 2.5,
+    rf_central_conductor_width: float = 10.0,
+    rf_gap: float = 4.0,
+    rf_ground_planes_width: float = 180.0,
+    cpw_cell: ComponentSpec = uni_cpw_straight,
+    draw_cpw: bool = True,
+) -> gf.Component:
+    c = gf.Component("NanoPh_eo_phase_shifter")
+
+    ps = eo_phase_shifter(
+        modulation_length=modulation_length,
+        taper_length=taper_length,
+        rib_core_width_modulator=rib_core_width_modulator,
+        rf_central_conductor_width=rf_central_conductor_width,
+        rf_gap=rf_gap,
+        rf_ground_planes_width=rf_ground_planes_width,
+        cpw_cell=cpw_cell,
+        draw_cpw=draw_cpw,
+    )
+
+    ps_ref = c << ps
+    c.add_ports(ps_ref.ports)
+    c.info["modulation_length"] = modulation_length
+    c.info["taper_length"] = taper_length
+    c.info["rib_core_width_modulator"] = rib_core_width_modulator
+    c.info["rf_central_conductor_width"] = rf_central_conductor_width
+    c.info["rf_gap"] = rf_gap
+    c.info["rf_ground_planes_width"] = rf_ground_planes_width
+
+    return c
