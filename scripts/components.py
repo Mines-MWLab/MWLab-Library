@@ -1382,6 +1382,16 @@ def single_custom_ps(
     # c.flatten()
     return c
 
+## straight section with 1380 nm cross section
+@gf.cell
+def straight_rwg1380(length: float = 10.0, **kwargs) -> gf.Component:
+    """Straight single mode (at 2.3 um) waveguide."""
+    if "cross_section" not in kwargs:
+        kwargs["cross_section"] = "xs_rwg1380"
+    return _straight(
+        length=length,
+        **kwargs,
+    )
 ## Concentric rings for soliton
 @gf.cell
 def concentric_rings_with_bus(
@@ -1404,7 +1414,7 @@ def concentric_rings_with_bus(
     # --- Cross-section Definitions ---
     xs_inner = gf.get_cross_section('xs_rwg5000')
     xs_outer = gf.get_cross_section('xs_rwg1380', width=1.380)
-    xs_bus = gf.get_cross_section('xs_rwg2000')
+    # xs_bus = gf.get_cross_section('xs_rwg2000')
 
     # --- Inner Ring ---
     path_inner = arc(radius=radius_inner, angle=360)
@@ -1423,13 +1433,13 @@ def concentric_rings_with_bus(
     outer_ring.center = inner_ring.center
 
     # --- Bus Waveguide ---
-    bus_wg = straight_rwg2000(length=bus_length)
+    bus_wg = straight_rwg1380(length=bus_length)
     bus_ref = c << bus_wg
 
     # --- Position the bus waveguide at the BOTTOM ---
     # Correctly calculate the vertical position for the bus waveguide's center
     y_bus_center = -(
-        5/2+gap_inner_outer+1.38+1+coupling_gap_bus
+        5/2+gap_inner_outer+1.38+1.38/2+coupling_gap_bus
     )
 
     # Move the bus waveguide to the calculated position.
