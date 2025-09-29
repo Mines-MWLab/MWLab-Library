@@ -6,7 +6,7 @@ import gdsfactory as gf
 import sys, os
 
 # -----------------------------------------------------------------------------
-# Repo root on path (so "scripts" is importable) and constants
+# Repo root on path and constants
 # -----------------------------------------------------------------------------
 sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from scripts import devices
