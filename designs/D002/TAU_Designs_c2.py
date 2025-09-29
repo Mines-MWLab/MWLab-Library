@@ -8,7 +8,7 @@ import sys, os
 
 # add repo root to path
 sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-from scripts import devices, TAUdevices
+from scripts import devices, TAUdevices, components
 gf.config.write_ports_on_component = True
 
 # --------------------------------------------------------------------------------------
@@ -45,7 +45,7 @@ def chip_frame():
 chip_layout = chip_frame()
 
 # global parameters
-input_ext = 10
+input_ext = 5
 # edge coupler component (referenced in legacy code comments)
 double_taper = EDGE_COUPLER
 routing_roc = 50.0
@@ -56,22 +56,22 @@ MIN_SPACING = 490.0  # um
 
 # per-device manual placement tweaks (dx, dy) in microns
 DEVICE_OFFSETS = {
-    "PM_MLL_cavity_AQ": (0.0, -150.0),
-    "AM_MLL_cavity_AQ": (0.0, -200.0),
+    "PM_MLL_cavity_AQ": (80.0, -150.0),
+    "AM_MLL_cavity_AQ": (80.0, -200.0),
     "tunable_mzm_laser_Redwan": (770.0, -100.0),
     "soliton_ring_Redwan": (2000.0, 0.0),
 }
 
-# optional sweep panel global offset (dx, dy) in microns
+# Spiral panel global offset (dx, dy) in microns
 SPIRAL_SWEEP_OFFSET = (-4000.0, -3400.0)
 SPIRAL_BLOCK_SEPARATION = 500.0
 SPIRAL_VORTEX_PORT_PITCH = 25.0
 
+# Rings panel global offset (dx, dy) in microns
 RING_VORTEX_PORT_PITCH = 125.0
 RING_VORTEX_SWEEP_OFFSET = (300.0, 4300.0)
 RING_VORTEX_SWEEP_Q_VALUES = [336, 338, 340]  # top to bottom
-RING_VORTEX_SWEEP_GAPS = [0.30, 0.40, 0.50, 0.60]
-RING_VORTEX_SWEEP_COLUMN_COUNT = 12
+RING_VORTEX_SWEEP_GAPS = [0.30, 0.40, 0.50, 0.60]   
 RING_VORTEX_SWEEP_ROW_PITCH = 500.0
 RING_VORTEX_SWEEP_COL_PITCH = 125.0
 
@@ -84,7 +84,14 @@ SOLITON_RING_SWEEP_BLOCK_COUNT = 5
 SOLITON_RING_SWEEP_BLOCK_VERTICAL_SPACING = 650.0
 
 # NanoPh EO phase shifter placement offset (dx, dy) in microns
-NANOPH_EO_PS_OFFSET = (0.0, 0.0)
+NANOPH_EO_PS_OFFSET = (-1000.0, 1800.0)
+
+# NanoPh grating structure placement controls
+NANOPH_GRATING_OFFSET = (-1100.0, 100.0)
+NANOPH_GRATING_PERIODS_TOP = [1.00, 1.05, 1.10, 1.15]
+NANOPH_GRATING_PERIOD_STEP = 0.05
+NANOPH_GRATING_ROW_PITCH = 400.0
+NANOPH_GRATING_COL_PITCH = 450.0
 
 
 def build_spiral_sweep_panel() -> gf.Component:
@@ -273,10 +280,11 @@ def build_ring_vortex_sweep(
 # -----------------------------------------------------------------------------
 # Instantiate the three devices (single copies)
 # -----------------------------------------------------------------------------
-PM = TAUdevices.PM_MLL_cavity_AQ()
-AM = TAUdevices.AM_MLL_cavity_AQ()
+PM = TAUdevices.PM_MLL_cavity_AQ(modulation_length=9150.0)
+AM = TAUdevices.AM_MLL_cavity_AQ(modulation_length=8440.0)
 TZ = TAUdevices.tunable_mzm_laser_Redwan()
 NANOPH_PS = TAUdevices.NanoPh_eo_phase_shifter()
+NANOPH_GRATING = TAUdevices.nanoph_grating_structure_AC()
 
 @gf.cell
 def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
@@ -383,49 +391,84 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
     # ------------------------------------------------------------------
     # NANOPH EO PHASE SHIFTER
     # ------------------------------------------------------------------
-    nanoph_ps_ref = c << NANOPH_PS
+    nanoph_ps_ref = c << TAUdevices.NanoPh_eo_phase_shifter(modulation_length=4000.0)
     target_ps_x = W / 2.0 + NANOPH_EO_PS_OFFSET[0]
     target_ps_y = H / 2.0 + NANOPH_EO_PS_OFFSET[1]
     nanoph_ps_ref.dmovex(target_ps_x - nanoph_ps_ref.center[0])
     nanoph_ps_ref.dmovey(target_ps_y - nanoph_ps_ref.center[1])
-    c.add_label(
-        text="NanoPh_eo_phase_shifter",
-        position=(nanoph_ps_ref.center[0], nanoph_ps_ref.center[1] + 60),
-        layer=(66, 0),
-    )
 
-    top_facet_y = chip_layout.ymax + input_ext
+    top_facet_y = chip_layout.dymax + input_ext
     ps_bend = partial(
         gf.components.bend_euler,
         radius=routing_roc,
         with_arc_floorplan=True,
-        cross_section="xs_rwg1000",
+        cross_section="xs_rwg2500",
     )
+
+    taper = gf.components.taper_cross_section(
+            cross_section1="xs_rwg900",
+            cross_section2="xs_rwg2500",
+            length=400.0,
+            linear=True,
+        )
 
     for port_name in ("o1", "o2"):
         if port_name not in nanoph_ps_ref.ports:
             continue
         port = nanoph_ps_ref.ports[port_name]
-        coupler_ref = c << gf.get_component(
-            "double_linear_inverse_taper",
-            input_ext=input_ext,
-            cross_section_end="xs_rwg1000",
-        )
+        coupler_ref = c << EDGE_COUPLER
         coupler_ref.drotate(-90)
         coupler_ref.dmove(
             coupler_ref.ports["o1"].dcenter,
-            (port.center[0], top_facet_y),
+            (port.center[0] + (-1 if port_name == "o1" else 1) * routing_roc , top_facet_y),
         )
+        
+        taper_ref = c << taper
+        taper_ref.connect("o1", coupler_ref.ports["o2"])
 
         gf.routing.route_single(
             c,
-            port1=coupler_ref.ports["o2"],
+            port1=taper_ref["o2"],
             port2=port,
-            cross_section="xs_rwg1000",
+            cross_section="xs_rwg2500",
             bend=ps_bend,
             radius=routing_roc,
-            straight="straight_rwg1000",
+            straight="straight_rwg2500",
+            allow_width_mismatch=True
         )
+
+    # ------------------------------------------------------------------
+    # NANOPH GRATING STRUCTURE
+    # ------------------------------------------------------------------
+    top_periods = list(NANOPH_GRATING_PERIODS_TOP)
+    step = NANOPH_GRATING_PERIOD_STEP
+    bottom_periods = [max(top_periods) + (idx + 1) * step for idx in range(len(top_periods))]
+
+    grating_cols = len(top_periods)
+    grating_rows = 2
+    base_grating_x = W / 2.0 + NANOPH_GRATING_OFFSET[0]
+    base_grating_y = H / 2.0 + NANOPH_GRATING_OFFSET[1]
+
+    for row in range(grating_rows):
+        row_offset_y = (row - (grating_rows - 1) / 2.0) * NANOPH_GRATING_ROW_PITCH
+        row_periods = top_periods if row == grating_rows - 1 else bottom_periods
+        for col, period in enumerate(row_periods):
+            grating_ref = c << TAUdevices.nanoph_grating_structure_AC(period=period)
+
+            if row == grating_rows - 1:
+                grating_ref.drotate(90)
+
+            col_offset_x = (col - (grating_cols - 1) / 2.0) * NANOPH_GRATING_COL_PITCH
+            target_x = base_grating_x + col_offset_x
+            target_y = base_grating_y + row_offset_y
+            grating_ref.dmovex(target_x - grating_ref.center[0])
+            grating_ref.dmovey(target_y - grating_ref.center[1])
+
+            c.add_label(
+                text=f"nanoph_grating_AC_p{period:.3f}_r{row}_c{col}",
+                position=(grating_ref.center[0], grating_ref.center[1] + 60),
+                layer=(66, 0),
+            )
 
     # Place ring vortex sweep panel 
     coupler_x_local = (left_facet_x - input_ext) - RING_VORTEX_SWEEP_OFFSET[0]
@@ -463,24 +506,29 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
             gf.components.bend_euler,
             radius=routing_roc,
             with_arc_floorplan=True,
-            cross_section="xs_rwg900",
+            cross_section="xs_rwg1380",
         )
         ring_straight = partial(
             gf.components.straight,
-            cross_section="xs_rwg900",
+            cross_section="xs_rwg1380",
         )
         taper_ring_component = gf.components.taper_cross_section(
             cross_section1="xs_rwg1380",
-            cross_section2="xs_rwg900",
-            length=350.0,
+            cross_section2="xs_rwg1380",
+            length=1.0,
             linear=True,
         )
+
         for gap_value, ring_ref, block_idx, gap_idx in soliton_refs:
             if "o1" not in ring_ref.ports:
                 continue
             ring_port = ring_ref.ports["o1"]
             taper_ref = c << taper_ring_component
-            coupler_ref = c << EDGE_COUPLER
+            coupler_ref = c << components.linear_inverse_taper_AQ(
+                taper_length=200, 
+                input_ext=10, 
+                cross_section_end="xs_rwg1380"
+                )
             coupler_ref.drotate(-90)
             taper_out_center = taper_ref.ports["o2"].center
             x_west_base = ring_port.center[0] - 100.0 
@@ -509,6 +557,7 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
                 radius=100.0,
                 straight=ring_straight,
                 waypoints=waypoints,
+                allow_width_mismatch=True
             )
 
             # Route the right-most port to a right-facet edge coupler
@@ -516,7 +565,11 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
                 right_port = ring_ref.ports["o2"]
                 taper_right = c << taper_ring_component
                 taper_right.connect("o1", right_port)
-                coupler_right = c << EDGE_COUPLER
+                coupler_right = c << components.linear_inverse_taper_AQ(
+                taper_length=200, 
+                input_ext=10, 
+                cross_section_end="xs_rwg1380"
+                )
                 coupler_right.drotate(180)
                 coupler_right.dmove(
                     coupler_right.ports["o1"].dcenter,
@@ -530,24 +583,22 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
                     bend=ring_bend,
                     radius=routing_roc,
                     straight=ring_straight,
+                    allow_width_mismatch=True
                 )
 
     # ------------------------------------------------------------------
     # EDGE COUPLERS AND ROUTING
     # ------------------------------------------------------------------
+    # TZ Edge Coupler and routing
     if "o1" in tz_ref.ports:
         tz_output_port = tz_ref.ports["o1"]
-        tz_ec_top = c << gf.get_component(
-            "double_linear_inverse_taper",
-            input_ext=input_ext,
-            cross_section_end="xs_rwg2000",
-        )
+        tz_ec_top = c << components.tilted_inverse_taper_AQ(taper_length=200, input_ext=12)
         tz_ec_top.drotate(-90)
-        top_facet_y = chip_layout.ymax + input_ext
+        top_facet_y = chip_layout.ymax + 2 * input_ext
         tz_ec_top_x = tz_output_port.center[0] - routing_roc
         tz_ec_top.dmove(
-            tz_ec_top.ports["o1"].dcenter,
-            (tz_ec_top_x, top_facet_y),
+            tz_ec_top.ports["o2"].dcenter,
+            (tz_ec_top_x, top_facet_y - tz_ec_top.dysize - 1.5),
         )
         gf.routing.route_single(
             c,
@@ -557,6 +608,46 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
             bend=routing_bend,
             radius=routing_roc,
             straight="straight_rwg2000",
+        )
+
+    # PM Edge Coupler and routing
+    if "o1" in pm_ref.ports:
+        pm_input_port = pm_ref.ports["o1"]
+        pm_ec_bottom = c << components.tilted_inverse_taper_AQ(taper_length=200, input_ext=12)
+        pm_ec_bottom.drotate(0)
+        left_facet_x = chip_layout.xmin + input_ext
+        pm_ec_bottom.dmove(
+            pm_ec_bottom.ports["o2"].dcenter,
+            (left_facet_x + pm_ec_bottom.dxmax, pm_input_port.center[1]),
+        )
+        gf.routing.route_single(
+            c,
+            port1=pm_ec_bottom.ports["o2"],
+            port2=pm_input_port,
+            cross_section="xs_rwg2000",
+            bend=routing_bend,
+            radius=routing_roc,
+            straight="straight_rwg2000"
+        )
+
+    #AM Edge Coupler and routing
+    if "o1" in am_ref.ports:
+        am_input_port = am_ref.ports["o1"]
+        am_ec_bottom = c << components.tilted_inverse_taper_AQ(taper_length=200, input_ext=12)
+        am_ec_bottom.drotate(0)
+        left_facet_x = chip_layout.xmin + input_ext
+        am_ec_bottom.dmove(
+            am_ec_bottom.ports["o2"].dcenter,
+            (left_facet_x + am_ec_bottom.dxmax, am_input_port.center[1]),
+        )
+        gf.routing.route_single(
+            c,
+            port1=am_ec_bottom.ports["o2"],
+            port2=am_input_port,
+            cross_section="xs_rwg2000",
+            bend=routing_bend,
+            radius=routing_roc,
+            straight="straight_rwg2000"
         )
 
     return c

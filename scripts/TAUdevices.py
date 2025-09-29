@@ -48,7 +48,7 @@ from lnoi400.spline import (
 # Phase Modulated Active MLL Cavity = Edge Coupler + PM + Loop Mirror: Ajwaad Quashef
 #####################################################################################
 @gf.cell
-def PM_MLL_cavity_AQ():
+def PM_MLL_cavity_AQ(modulation_length: float = 9000.0):
 
     #define constants
 
@@ -57,15 +57,10 @@ def PM_MLL_cavity_AQ():
     splitter = orc_components.custom_mmi_AQ()
     mirror = orc_components.loop_mirror_AQ(splitter='custom_mmi', cross_section='xs_rwg2000')
 
-    input_ext = 10.0
-    edge_coupler = orc_components.tilted_DL_inverse_taper_AQ(
-                                input_ext=input_ext,
-                                angle = 16.86,
-                                )
     st_wg = orc_components.straight_rwg2000(
         length = 210
     )
-    phase_modulator = orc_components.eo_phase_modulator_AQ(modulation_length=9230.0)
+    phase_modulator = orc_components.eo_phase_modulator_AQ(modulation_length)
 
 
     def cavity():
@@ -105,19 +100,13 @@ def PM_MLL_cavity_AQ():
 # Amplitude Modulated Active MLL Cavity = Edge Coupler + MZM + Loop Mirror: Ajwaad Quashef
 #############################################################################################
 @gf.cell
-def AM_MLL_cavity_AQ():
+def AM_MLL_cavity_AQ(modulation_length: float = 8540 ):
     #define constants
 
 
     #define subcomponents
     mirror = orc_components.loop_mirror_AQ(splitter='custom_mmi_AQ', cross_section='xs_rwg2000')
-    mzm = orc_components.mzm_custom_AQ(modulation_length=8540)
-
-    input_ext = 10.0
-    edge_coupler = orc_components.tilted_DL_inverse_taper_AQ(
-                                input_ext=input_ext,
-                                angle = 16.86,
-                                )
+    mzm = orc_components.mzm_custom_AQ(modulation_length)
 
     st_wg = orc_components.straight_rwg2000(
         length = 10
@@ -344,7 +333,7 @@ def ring_vortex_beam_emitter_AC(
     R_ring: float = 50.0,
     W_wg: float = 0.8,
     W_gap: float = 0.3,
-    W_notch: float = 0.25,
+    W_notch: float = 0.3,
     notch_type: str = "S",
     resolution: float = 0.1,
     show_ports: bool = False,
@@ -605,7 +594,7 @@ def spiral_vortex_beam_emitter_equal_arc_spacing_AC(
         if notch_type == "S":
             notch_ref = component << notch_rect
             notch_ref.drotate(angle_deg)
-            radial_offset = radius_at_spot - notch_width - W_spiral / 2
+            radial_offset = radius_at_spot + W_margin - notch_length / 2 - W_spiral / 2
             notch_ref.dmovex(snap(radial_offset * cos_t))
             notch_ref.dmovey(snap(radial_offset * sin_t))
         elif notch_type == "C_in":
@@ -714,3 +703,35 @@ def NanoPh_eo_phase_shifter(
     c.info["rf_ground_planes_width"] = rf_ground_planes_width
 
     return c
+
+
+#####################################################################################
+# NanoPhtonics Grating Structure (AC adaptation for lnoi400 PDK)
+#####################################################################################
+@gf.cell
+def nanoph_grating_structure_AC(
+    length: float = 200.0,
+    feature_width: float = 0.7,
+    period: float = 0.911,
+    grating_lines: int = 110,
+    cross_section: CrossSectionSpec = "xs_rwg800",
+) -> gf.Component:
+    """1D grating array compatible with the lnoi400 cross-sections."""
+
+    component = gf.Component("nanoph_grating_structure_AC")
+
+    base_xs = gf.get_cross_section(cross_section)
+    try:
+        line_xs = base_xs.copy(width=feature_width)
+    except TypeError:
+        line_xs = base_xs
+
+    grating_line = gf.components.straight(length=length, cross_section=line_xs)
+
+    for index in range(grating_lines):
+        line_ref = component.add_ref(grating_line)
+        line_ref.dmovey(index * period)
+
+    component.move((0, feature_width / 2))
+
+    return component
