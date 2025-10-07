@@ -69,14 +69,14 @@ def PM_MLL_cavity_AQ(modulation_length: float = 9000.0):
     def cavity():
         # push subcomponents to design
         cavity_component = gf.Component()
-        edge_coupler_ref = cavity_component << edge_coupler
+        # edge_coupler_ref = cavity_component << edge_coupler
         st_wg_ref1 = cavity_component << st_wg
         st_wg_ref2 = cavity_component << st_wg
         pm_ref = cavity_component << phase_modulator
         lm_ref = cavity_component << mirror
         
         # Position straight waveguide next to edge coupler
-        st_wg_ref1.connect("o1", edge_coupler_ref.ports["o2"])
+        # st_wg_ref1.connect("o1", edge_coupler_ref.ports["o2"])
         
         # Position phase modulator next to straight waveguide
         pm_ref.connect("o1", st_wg_ref1.ports["o2"])
@@ -124,13 +124,13 @@ def AM_MLL_cavity_AQ(modulation_length: float = 8500):
     def cavity():
         # push subcomponents to design
         cavity_component = gf.Component()
-        edge_coupler_ref = cavity_component << edge_coupler
+        # edge_coupler_ref = cavity_component << edge_coupler
         st_wg_ref = cavity_component << st_wg
         mzm_ref = cavity_component << mzm
         lm_ref = cavity_component << mirror
         
         # Position straight waveguide next to edge coupler
-        st_wg_ref.connect("o1", edge_coupler_ref.ports["o2"])
+        # st_wg_ref.connect("o1", edge_coupler_ref.ports["o2"])
         
         # Position MZM next to straight waveguide and connect loop mirror
         mzm_ref.connect("o1", st_wg_ref.ports["o2"])
