@@ -491,7 +491,7 @@ def custom_mmi_AQ(
     c = gf.Component()
 
     script_dir = pathlib.Path(__file__).parent.resolve()
-    # script_dir = pathlib.Path("C://Users/kbmdqu/MWLab-Library/scripts")
+    # script_dir = pathlib.Path("P:/MWLab-Library/scripts/")
     gds_file_path = script_dir / "utility_files" / "ybranch_3D_2300nm_len=64um_v1.gds"
     y_branch_geom = gf.import_gds(gds_file_path)
     # y_branch_geom = gf.import_gds("S:/61501_Users/Ajwaad/LXT PDK/Layout/y_branch_3D.gds")
@@ -866,7 +866,7 @@ def mzm_custom_AQ(
 def linear_inverse_taper_AQ(
     cross_section_start: CrossSectionSpec = "xs_rwg750",
     cross_section_end: CrossSectionSpec = "xs_rwg2000",
-    taper_length: float = 20.0,
+    taper_length: float = 50.0,
     input_ext: float = 10.0,
 ) -> gf.Component:
     """Inverse rib width taper for edge coupler"""

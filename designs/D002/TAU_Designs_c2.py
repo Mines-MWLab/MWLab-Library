@@ -280,8 +280,8 @@ def build_ring_vortex_sweep(
 # -----------------------------------------------------------------------------
 # Instantiate the three devices (single copies)
 # -----------------------------------------------------------------------------
-PM = TAUdevices.PM_MLL_cavity_AQ(modulation_length=9150.0)
-AM = TAUdevices.AM_MLL_cavity_AQ(modulation_length=8440.0)
+PM = TAUdevices.PM_MLL_cavity_AQ(modulation_length=9000.0)
+AM = TAUdevices.AM_MLL_cavity_AQ(modulation_length=8500.0)
 TZ = TAUdevices.tunable_mzm_laser_Redwan()
 NANOPH_PS = TAUdevices.NanoPh_eo_phase_shifter()
 NANOPH_GRATING = TAUdevices.nanoph_grating_structure_AC()
@@ -620,7 +620,7 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
     # PM Edge Coupler and routing
     if "o1" in pm_ref.ports:
         pm_input_port = pm_ref.ports["o1"]
-        pm_ec_bottom = c << components.tilted_inverse_taper_AQ(taper_length=200, input_ext=12)
+        pm_ec_bottom = c << components.tilted_inverse_taper_AQ(taper_length=50, input_ext=12)
         pm_ec_bottom.drotate(0)
         left_facet_x = chip_layout.xmin + input_ext
         pm_ec_bottom.dmove(
@@ -640,7 +640,7 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
     #AM Edge Coupler and routing
     if "o1" in am_ref.ports:
         am_input_port = am_ref.ports["o1"]
-        am_ec_bottom = c << components.tilted_inverse_taper_AQ(taper_length=200, input_ext=12)
+        am_ec_bottom = c << components.tilted_inverse_taper_AQ(taper_length=50, input_ext=12)
         am_ec_bottom.drotate(0)
         left_facet_x = chip_layout.xmin + input_ext
         am_ec_bottom.dmove(
