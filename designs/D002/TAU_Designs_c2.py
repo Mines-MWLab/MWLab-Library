@@ -344,11 +344,6 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
     panel_height = panel_ref.dymax - panel_ref.dymin
     panel_ref.dmovex(W / 2 - panel_width / 2 + SPIRAL_SWEEP_OFFSET[0])
     panel_ref.dmovey(H / 2 - panel_height / 2 + SPIRAL_SWEEP_OFFSET[1])
-    c.add_label(
-        text="spiral_vortex_sweep_panel",
-        position=(panel_ref.center[0], panel_ref.center[1] + 60),
-        layer=(66, 0),
-    )
 
     left_facet_x = chip_layout.dxmin
     spiral_bend = partial(
@@ -463,12 +458,6 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
             grating_ref.dmovex(target_x - grating_ref.center[0])
             grating_ref.dmovey(target_y - grating_ref.center[1])
 
-            c.add_label(
-                text=f"nanoph_grating_AC_p{period:.3f}_r{row}_c{col}",
-                position=(grating_ref.center[0], grating_ref.center[1] + 60),
-                layer=(66, 0),
-            )
-
     # Place ring vortex sweep panel 
     coupler_x_local = (left_facet_x - input_ext) - RING_VORTEX_SWEEP_OFFSET[0]
     ring_panel = build_ring_vortex_sweep(
@@ -501,11 +490,6 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
                 ring_ref.dmovex(target_x - origin_center[0])
                 ring_ref.dmovey(target_y - origin_center[1])
                 soliton_refs.append((coupling_gap, inner_outer_gap, ring_ref, row_idx, col_idx))
-                c.add_label(
-                    text=f"soliton_gap{coupling_gap:.3f}_io{inner_outer_gap:.1f}_r{row_idx}_c{col_idx}",
-                    position=(ring_ref.center[0], ring_ref.center[1] + 45),
-                    layer=(66, 0),
-                )
 
         top_facet_y = chip_layout.dymax
         right_facet_x = chip_layout.dxmax
