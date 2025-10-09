@@ -287,8 +287,8 @@ def build_ring_vortex_sweep(
 # -----------------------------------------------------------------------------
 # Instantiate the three devices (single copies)
 # -----------------------------------------------------------------------------
-PM = TAUdevices.PM_MLL_cavity_AQ(modulation_length=9000.0)
-AM = TAUdevices.AM_MLL_cavity_AQ(modulation_length=8500.0)
+PM = TAUdevices.PM_MLL_cavity_AQ(modulation_length=8950.0)
+AM = TAUdevices.AM_MLL_cavity_AQ(modulation_length=8450.0)
 TZ = TAUdevices.tunable_mzm_laser_Redwan()
 NANOPH_PS = TAUdevices.NanoPh_eo_phase_shifter()
 NANOPH_GRATING = TAUdevices.nanoph_grating_structure_AC()

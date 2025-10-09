@@ -22,7 +22,7 @@ def xs_rwg2000(
 @xsection
 def xs_rwg750(
     layer: LayerSpec = "LN_RIDGE",
-    width: float = 0.75,
+    width: float = 0.72,
 ) -> CrossSection:
     sections = (
         gf.Section(
