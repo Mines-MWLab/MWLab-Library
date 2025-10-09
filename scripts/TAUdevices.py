@@ -720,8 +720,8 @@ def NanoPh_eo_phase_shifter(
 @gf.cell
 def nanoph_grating_structure_AC(
     length: float = 200.0,
-    feature_width: float = 0.7,
-    period: float = 0.911,
+    feature_width: float = 0.61,
+    period: float = 0.91,
     grating_lines: int = 110,
     cross_section: CrossSectionSpec = "xs_rwg800",
 ) -> gf.Component:

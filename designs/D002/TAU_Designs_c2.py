@@ -5,6 +5,7 @@ import numpy as np
 import lnoi400
 import gdsfactory as gf
 import sys, os
+from lnoi400.tech import LAYER
 
 # add repo root to path
 sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -88,10 +89,16 @@ NANOPH_EO_PS_OFFSET = (-1000.0, 1800.0)
 
 # NanoPh grating structure placement controls
 NANOPH_GRATING_OFFSET = (-1100.0, 100.0)
-NANOPH_GRATING_PERIODS_TOP = [1.00, 1.05, 1.10, 1.15]
-NANOPH_GRATING_PERIOD_STEP = 0.05
+NANOPH_GRATING_PERIODS_TOP = [0.91, 0.92, 0.93, 0.94]
+NANOPH_GRATING_PERIOD_STEP = 0.01
 NANOPH_GRATING_ROW_PITCH = 400.0
 NANOPH_GRATING_COL_PITCH = 450.0
+
+LABEL_TEXT_SIZE = 15.0
+LABEL_CLEARANCE = 10.0
+SOLITON_LABEL_TEXT_SIZE = 40.0
+SOLITON_TITLE_TEXT_SIZE = 60.0
+SOLITON_TITLE_CLEARANCE = 80.0
 
 
 def build_spiral_sweep_panel() -> gf.Component:
@@ -490,6 +497,34 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
                 ring_ref.dmovex(target_x - origin_center[0])
                 ring_ref.dmovey(target_y - origin_center[1])
                 soliton_refs.append((coupling_gap, inner_outer_gap, ring_ref, row_idx, col_idx))
+        if soliton_refs:
+            sorted_solitons = sorted(
+                soliton_refs,
+                key=lambda item: (-item[2].center[1], item[2].center[0]),
+            )
+            for soliton_index, (_, _, ring_ref, _, _) in enumerate(sorted_solitons, start=1):
+                label_component = gf.components.text(
+                    text=f"X{soliton_index:02d}",
+                    size=SOLITON_LABEL_TEXT_SIZE,
+                    layer=LAYER.LABELS,
+                )
+                label_ref = c << label_component
+                label_ref.center = ring_ref.center
+
+            min_x = min(ref.xmin for _, _, ref, _, _ in soliton_refs)
+            max_x = max(ref.xmax for _, _, ref, _, _ in soliton_refs)
+            top_y = max(ref.ymax for _, _, ref, _, _ in soliton_refs)
+            title_component = gf.components.text(
+                text="LXT.2300.X01-X15",
+                size=SOLITON_TITLE_TEXT_SIZE,
+                layer=LAYER.LABELS,
+            )
+            title_ref = c << title_component
+            title_height = title_ref.ymax - title_ref.ymin
+            title_ref.center = (
+                0.5 * (min_x + max_x),
+                top_y + SOLITON_TITLE_CLEARANCE + title_height / 2.0,
+            )
 
         top_facet_y = chip_layout.dymax
         right_facet_x = chip_layout.dxmax
@@ -592,6 +627,14 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
             tz_ec_top.ports["o2"].dcenter,
             (tz_ec_top_x, top_facet_y - tz_ec_top.dysize - 1.5),
         )
+        label_tz = gf.components.text(text="W01", size=LABEL_TEXT_SIZE, layer=LAYER.LABELS)
+        label_tz_ref = c << label_tz
+        label_tz_ref.drotate(90)
+        label_tz_width = label_tz_ref.ymax - label_tz_ref.ymin
+        label_tz_ref.center = (
+            tz_ec_top.center[0] - 30.0,
+            tz_ec_top.ymin - LABEL_CLEARANCE - label_tz_width / 2.0 + 160.0,
+        )
         gf.routing.route_single(
             c,
             port1=tz_ec_top.ports["o2"],
@@ -611,6 +654,13 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
         pm_ec_bottom.dmove(
             pm_ec_bottom.ports["o2"].dcenter,
             (left_facet_x + pm_ec_bottom.dxmax, pm_input_port.center[1]),
+        )
+        label_pm = gf.components.text(text="Z01", size=LABEL_TEXT_SIZE, layer=LAYER.LABELS)
+        label_pm_ref = c << label_pm
+        label_pm_height = label_pm_ref.ymax - label_pm_ref.ymin
+        label_pm_ref.center = (
+            pm_ec_bottom.center[0] + 40.0,
+            pm_ec_bottom.ymax + LABEL_CLEARANCE + label_pm_height / 2.0,
         )
         gf.routing.route_single(
             c,
@@ -632,6 +682,13 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
             am_ec_bottom.ports["o2"].dcenter,
             (left_facet_x + am_ec_bottom.dxmax, am_input_port.center[1]),
         )
+        label_am = gf.components.text(text="Y01", size=LABEL_TEXT_SIZE, layer=LAYER.LABELS)
+        label_am_ref = c << label_am
+        label_am_height = label_am_ref.ymax - label_am_ref.ymin
+        label_am_ref.center = (
+            am_ec_bottom.center[0] + 40.0,
+            am_ec_bottom.ymax + LABEL_CLEARANCE + label_am_height / 2.0,
+        )
         gf.routing.route_single(
             c,
             port1=am_ec_bottom.ports["o2"],
@@ -641,6 +698,15 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
             radius=routing_roc,
             straight="straight_rwg2000"
         )
+
+    chip_center_x = 0.5 * (chip_layout.xmin + chip_layout.xmax)
+    chip_label_component = gf.components.text(
+        text="LXT.2300.W01",
+        size=SOLITON_TITLE_TEXT_SIZE,
+        layer=LAYER.LABELS,
+    )
+    chip_label_ref = c << chip_label_component
+    chip_label_ref.center = (chip_center_x- 1000, 3450.0)
 
     return c
 

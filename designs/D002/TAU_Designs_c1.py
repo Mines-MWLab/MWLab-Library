@@ -1,9 +1,11 @@
 from functools import partial
 from pathlib import Path
+import math
 import numpy as np
 import lnoi400
 import gdsfactory as gf
 import sys, os
+from lnoi400.tech import LAYER
 
 # -----------------------------------------------------------------------------
 # Repo root on path and constants
@@ -65,6 +67,11 @@ STRAIGHT_NAMES = ["straight_rwg3000", "straight_rwg2750", "straight_rwg2500"]
 # Base straight length
 OPA_LENGTH = 8000.0
 
+LABEL_TEXT_SIZE = 10.0
+LABEL_CLEARANCE = 5.0
+LABEL_WIDTHS = (2.5, 3.0, 3.5)
+LABEL_X_OFFSET = 100.0
+
 # -----------------------------------------------------------------------------
 # Pre-build per-set straights and transition tapers 
 # -----------------------------------------------------------------------------
@@ -122,6 +129,8 @@ def die_assembled_grouped(
 
     H_total = chip_layout.dymax
     W_total = chip_layout.dxmax
+    label_x_left = chip_layout.xmin + LABEL_X_OFFSET
+    label_x_right = chip_layout.xmax - LABEL_X_OFFSET
 
     # Usable vertical range after top/bottom edge margins
     y_min = edge_margin + 50.0
@@ -167,6 +176,12 @@ def die_assembled_grouped(
     # Compute placements across the full usable height
     placements = pack_interleaved(y_min, y_max)
 
+    waveguides_no_mmi: list[dict[str, object]] = []
+    mmi_rows: dict[int, dict[str, object]] = {}
+    outputs_info: list[dict[str, object]] = []
+    row_label_map: dict[int, str] = {}
+    non_mmi_groups = 0
+
     # Place and route each row
     for row_idx, (y_center, set_idx) in enumerate(placements):
         # set-specific parts
@@ -190,6 +205,16 @@ def die_assembled_grouped(
         # input edge couplers + transition tapers 
         if use_mmi:
             INPUT_SPACING = 125.0
+            row_entry = mmi_rows.setdefault(
+                row_idx,
+                {
+                    "center_y": opa_ref.center[1],
+                    "row_idx": row_idx,
+                    "couplers": [],
+                },
+            )
+            row_entry["center_y"] = opa_ref.center[1]
+            row_entry["set_idx"] = set_idx
 
             def add_input_route(
                 target_port_name: str,
@@ -239,8 +264,14 @@ def die_assembled_grouped(
                 return ec, taper
 
             half_spacing = INPUT_SPACING / 2.0
-            add_input_route("in_bot", -half_spacing)
-            add_input_route("in_top", half_spacing)
+            result_bot = add_input_route("in_bot", -half_spacing)
+            if result_bot is not None:
+                coupler_bot, _ = result_bot
+                row_entry["couplers"].append({"coupler": coupler_bot, "orientation": "BOT"})
+            result_top = add_input_route("in_top", half_spacing)
+            if result_top is not None:
+                coupler_top, _ = result_top
+                row_entry["couplers"].append({"coupler": coupler_top, "orientation": "TOP"})
         else:
             # Single-input configuration (legacy straight without MMI)
             try:
@@ -265,6 +296,14 @@ def die_assembled_grouped(
                     straight=straight_name,
                     allow_width_mismatch=True
                 )
+                waveguides_no_mmi.append(
+                    {
+                        "coupler": ec_single,
+                        "center_y": opa_ref.center[1],
+                        "row_idx": row_idx,
+                        "set_idx": set_idx,
+                    }
+                )
 
         # output edge coupler + transition taper 
         ec_out = c << EDGE_COUPLER
@@ -287,6 +326,99 @@ def die_assembled_grouped(
             straight=straight_name,
             allow_width_mismatch=True
         )
+
+        outputs_info.append(
+            {
+                "coupler": ec_out,
+                "center_y": opa_ref.center[1],
+                "row_idx": row_idx,
+                "set_idx": set_idx,
+                "is_mmi": use_mmi,
+            }
+        )
+
+    if waveguides_no_mmi:
+        def _generate_label_names(count: int) -> list[str]:
+            labels: list[str] = []
+            group = 1
+            while len(labels) < count:
+                for width in LABEL_WIDTHS:
+                    if len(labels) >= count:
+                        break
+                    labels.append(f"WG{group}_{width:.1f}")
+                group += 1
+            return labels
+
+        waveguides_no_mmi.sort(key=lambda info: info["center_y"], reverse=True)
+        label_names = _generate_label_names(len(waveguides_no_mmi))
+
+        for info, label_text in zip(waveguides_no_mmi, label_names):
+            coupler_ref = info["coupler"]
+            label_component = gf.components.text(text=label_text, size=LABEL_TEXT_SIZE, layer=LAYER.LABELS)
+            label_ref = c << label_component
+            label_height = label_ref.ymax - label_ref.ymin
+            label_ref.center = (
+                label_x_left,
+                coupler_ref.ymax + LABEL_CLEARANCE + label_height / 2.0,
+            )
+            row_label_map[info["row_idx"]] = label_text
+
+        if LABEL_WIDTHS:
+            non_mmi_groups = math.ceil(len(label_names) / len(LABEL_WIDTHS))
+
+    if mmi_rows and LABEL_WIDTHS:
+        mmi_row_list = sorted(mmi_rows.values(), key=lambda data: data["center_y"], reverse=True)
+        start_group = max(non_mmi_groups + 1, 5)
+        width_index = 0
+        group = start_group
+
+        for row_data in mmi_row_list:
+            couplers = row_data.get("couplers", [])
+            if not couplers:
+                continue
+
+            width_value = LABEL_WIDTHS[width_index % len(LABEL_WIDTHS)]
+            base_label = f"WG{group}_{width_value:.1f}"
+
+            couplers_sorted = sorted(
+                couplers,
+                key=lambda info: info["coupler"].center[1],
+                reverse=True,
+            )
+
+            for coupler_info in couplers_sorted:
+                orientation = coupler_info.get("orientation", "TOP")
+                orientation = "TOP" if orientation.upper() == "TOP" else "BOT"
+                coupler_ref = coupler_info["coupler"]
+                label_text = f"{base_label}_{orientation}"
+                label_component = gf.components.text(text=label_text, size=LABEL_TEXT_SIZE, layer=LAYER.LABELS)
+                label_ref = c << label_component
+                label_height = label_ref.ymax - label_ref.ymin
+                label_ref.center = (
+                    label_x_left,
+                    coupler_ref.ymax + LABEL_CLEARANCE + label_height / 2.0,
+                )
+            row_label_map[row_data["row_idx"]] = base_label
+
+            width_index += 1
+            if width_index % len(LABEL_WIDTHS) == 0:
+                group += 1
+
+    if outputs_info:
+        outputs_sorted = sorted(outputs_info, key=lambda info: info["center_y"], reverse=True)
+        for info in outputs_sorted:
+            row_idx = info["row_idx"]
+            label_text = row_label_map.get(row_idx)
+            if not label_text:
+                continue
+            coupler_ref = info["coupler"]
+            label_component = gf.components.text(text=label_text, size=LABEL_TEXT_SIZE, layer=LAYER.LABELS)
+            label_ref = c << label_component
+            label_height = label_ref.ymax - label_ref.ymin
+            label_ref.center = (
+                label_x_right,
+                coupler_ref.ymax + LABEL_CLEARANCE + label_height / 2.0,
+            )
 
     # Add crux made of two 4 µm wide, 250 µm long straight waveguides.
     crux = gf.Component("crux")
