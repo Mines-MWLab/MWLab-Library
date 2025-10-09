@@ -288,12 +288,40 @@ def die_assembled_grouped(
             allow_width_mismatch=True
         )
 
+    # Add crux made of two 4 µm wide, 250 µm long straight waveguides.
+    crux = gf.Component("crux")
+    horiz = crux << gf.components.rectangle(size=(250.0, 4.0), layer=(4, 0))
+    horiz.move((-125.0, -2.0))
+    vert = crux << gf.components.rectangle(size=(4.0, 250.0), layer=(4, 0))
+    vert.move((-2.0, -125.0))
+
+    crux_ref = c << crux
+    left_facet_x = chip_layout.xmin
+    right_facet_x = chip_layout.xmax
+    top_facet_y = chip_layout.ymax
+    bot_facet_y = chip_layout.ymin
+    crux_center_x = left_facet_x + 50.0 + 1500.0  # 1375 µm offset + half length (125 µm)
+    crux_center_y = top_facet_y - 50.0 - 126.0    # 1 µm clearance + half length (125 µm)
+    crux_ref.move((crux_center_x, crux_center_y))
+    crux_ref_mirror = c << crux
+    crux_ref_mirror.move((right_facet_x - crux_center_x, crux_center_y))
+    crux_ref_mirror1 = c << crux
+    crux_ref_mirror1.move((crux_center_x, 50.0 + 126.0))
+    crux_ref_mirror2 = c << crux
+    crux_ref_mirror2.move((right_facet_x-crux_center_x, 50.0 + 126.0 ))
+
     return c
 
 # -----------------------------------------------------------------------------
 # Build and show die
 # -----------------------------------------------------------------------------
 die = die_assembled_grouped()
-die.plot()
-die.show()
-# _ = die.write_gds(gdsdir=Path.cwd())
+
+# Work on a flattened copy for export so downstream translations remain robust.
+die_flat = gf.Component("TAU_Designs_c1_die_flat")
+die_flat << die
+die_flat.flatten()
+
+die_flat.plot()
+die_flat.show()
+# _ = die_flat.write_gds(gdsdir=Path.cwd())

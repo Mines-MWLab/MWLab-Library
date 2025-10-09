@@ -575,6 +575,7 @@ def die_assembled_c2(pitch: float = MIN_SPACING) -> gf.Component:
                 coupler_right = c << components.linear_inverse_taper_AQ(
                 taper_length=200, 
                 input_ext=10, 
+                cross_section_start="xs_rwg250",
                 cross_section_end="xs_rwg1380"
                 )
                 coupler_right.drotate(180)
