@@ -410,13 +410,13 @@ def ring_vortex_beam_emitter_AC(
     ridge_layer = LAYER.LN_RIDGE
     notch_rect = gf.components.rectangle(
         size=(notch_length, notch_width),
-        layer=ridge_layer,
+        layer=(2,1),
         centered=True,
     )
     notch_circle = gf.components.circle(
         radius=notch_width / 2,
         angle_resolution=2.5,
-        layer=ridge_layer,
+        layer=(2,1),
     )
 
     for i in range(q):
@@ -589,9 +589,9 @@ def spiral_vortex_beam_emitter_equal_arc_spacing_AC(
     notch_width = snap(W_notch)
     notch_length = snap(W_notch + W_margin)
 
-    ridge_layer = LAYER.LN_RIDGE
-    notch_rect = gf.components.rectangle(size=(notch_length, notch_width), layer=ridge_layer, centered=True)
-    notch_circle = gf.components.circle(radius=notch_width / 2, angle_resolution=2.5, layer=ridge_layer)
+    ridge_layer = (LAYER.LN_RIDGE)
+    notch_rect = gf.components.rectangle(size=(notch_length, notch_width), layer=(2,1), centered=True)
+    notch_circle = gf.components.circle(radius=notch_width / 2, angle_resolution=2.5, layer=(2,1))
 
     gap_i = 0.4
 
